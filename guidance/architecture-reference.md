@@ -404,7 +404,7 @@ when proposing features:
   `@` menu keeps the "Roll table" door: it opens the **table-flavored grammar
   dialog** (same record, teaching copy oriented to tables).
 - *Unified grammar engine* (`runGrammar`, `expandTemplate`, `resolveBrace`,
-  `expandRule`, `parseRules`, `expandText`) — a recursive-substitution engine
+  `expandRule`, `parseRules`) — a recursive-substitution engine
   (Tracery-style) that **is** the composition layer. One brace syntax `{...}`
   covers everything, content-sniffed inside `resolveBrace`: a conditional
   (`{cond: then|else}` — a comparison before a top-level `:`, via `condParts`) →
@@ -434,7 +434,7 @@ when proposing features:
   (a named roll table IS one of these — see the collapse above), so `{rule}`
   resolves across nodes. Cycles (`a→b→a`)
   and runaway depth are caught lazily during expansion (`↻`/`…` markers) — no
-  eager resolution. `expandText(str)` runs `{...}` in any plain string against the
+  eager resolution. `expandTemplate(str, ctx)` runs `{...}` in any plain string against the
   doc namespace, so any rule alternative can roll dice
   (`{2d6} gold`), call a rule, or reference another table. The `[[grammar:KEY]]`
   pill freezes its expansion like dice; click re-generates. Pure and

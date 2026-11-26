@@ -4040,7 +4040,6 @@ function calBaseItems(model, dateBy, lastRow = (model.rows || []).length - 1) {
 // shows. Otherwise: a collapsed base shows no rows; an uncapped base (baseRows null or
 // <= 0) shows all; a capped base shows the first N data rows and flags `clipped` when
 // there are more, so the widget can offer a "zoom in for the rest" footer. Pure.
-const BASE_ROWS_DEFAULT = 8;   // a fresh base is uncapped; this is the cap a user's toggle applies
 function baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) {
   if (isZoomed) return { collapsed: false, shown: totalDataRows, clipped: false, hidden: 0 };
   if (collapsed) return { collapsed: true, shown: 0, clipped: totalDataRows > 0, hidden: totalDataRows };
@@ -4478,7 +4477,6 @@ function clockCompletionCue(parent, child) {
 //   self → 0 (node only; no descendants) · children → 1 · subtree → Infinity · N → N
 // An unrecognized token → null, so the caller leaves the expr literal and evalMath /
 // the cookie renderer surfaces the error (P4: never a silent miscount). Pure.
-const SCOPE_TOKEN_RE = /^(self|children|subtree|\d+)$/;
 function resolveScopeDepth(token) {
   const t = String(token == null ? '' : token).trim().toLowerCase();
   if (t === 'self') return 0;
@@ -8974,14 +8972,6 @@ function rollParsed(terms) {
     return { sign: t.sign, kind: 'dice', count, sides, exploding, reroll, keepMode, keepCount, rolls, rerolledFrom, kept, sum };
   });
   return { total, parts };
-}
-
-// Canonical expression string, e.g. "4d6-2+5d12"
-function diceExprStr(terms) {
-  return terms.map((t, i) => {
-    const op = t.sign < 0 ? '-' : (i === 0 ? '' : '+');
-    return op + (t.kind === 'dice' ? `${t.count}d${t.sides}` : `${t.value}`);
-  }).join('');
 }
 
 function diceKey() { return 'r' + Math.random().toString(36).slice(2, 9); }
@@ -15447,7 +15437,6 @@ function openPropsDialog(nodeId, targets = null) {
   _shell.wireDraft(
     () => ({ rows: JSON.stringify(props) }),
     v => { try { const r = JSON.parse(v.rows); if (Array.isArray(r) && r.length) props = r; } catch (_) {} });
-  const _cancelProps = _shell.close;
 
   function renderRows(focusLast = false) {
     list.innerHTML = '';
@@ -15529,7 +15518,6 @@ function openPropsDialog(nodeId, targets = null) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
   ]);
-  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
@@ -16148,7 +16136,6 @@ function openDueDateDialog(nodeId, targets = null) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
   ]);
-  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     // #1506: each refusal leads with the OUTCOME ("Not saved"), then the same sentence the field
@@ -16851,7 +16838,7 @@ function openAppearanceDialog() {
   root.appearance = root.appearance || { tags: {}, props: {} };
   const ap = root.appearance;
   // UXP-247: the shell supplies the in-place-rebuild signal that used to be this dialog's private
-  // `_apprFresh`. This dialog re-renders itself after every swatch/icon commit, and `freshOnly`
+  // `_apprFresh` local. This dialog re-renders itself after every swatch/icon commit, and `freshOnly`
   // tells the shell that a draft may be restored on a FIRST open only — restoring mid-rebuild would
   // push a stale name over the input being typed into.
   const _shell = openDialogShell({
@@ -16861,7 +16848,6 @@ function openAppearanceDialog() {
     // lookups, not stored state, so the seeds are blank and "matches" reduces to "was anything typed"
     seeds: { tag: '', prop: '' }, freshOnly: true,
   });
-  const _apprFresh = _shell.fresh;
 
   const commit = (msg) => { markDirty(); render(); if (msg) flashHint(msg); openAppearanceDialog(); };
 
@@ -16948,12 +16934,10 @@ function openAppearanceDialog() {
   _shell.wireDraft(
     () => ({ tag: tagIn.value, prop: propIn.value }),
     v => { tagIn.value = v.tag ?? ''; propIn.value = v.prop ?? ''; });   // freshOnly gates this
-  const _cancelAppr = _shell.close;
 
   // A settings surface: no submit, so Close is the only button. It is the DISMISS role, which is
   // why it can carry the shell's `close` and keep the typed lookup on the way out.
   _shell.mountFooter([{ key: 'close', role: 'dismiss', label: 'Close' }]);
-  const closeBtn = _shell.btns.close;
   // #464 review #1: after an in-place rebuild, return focus to the section the user was acting in
   // (not always the Tag input), so configuring several properties in a row doesn't jump to the top.
   requestAnimationFrame(() => (_apprFocus === 'prop' ? propIn : tagIn).focus());
@@ -18046,7 +18030,6 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   if (!strip) return;
   const hadFocus = keepFocus && strip.contains(document.activeElement) && document.activeElement.id !== 'cap-input';
   strip.innerHTML = '';
-  const slots = root.inboxes || [];
   // #1517: read through the SHARED destination, so the name on the chip is the place the commit
   // will use. `null` here means "the top level", which is what the copy below says.
   const landing = captureDest();
@@ -20986,13 +20969,6 @@ function braceAttemptReason(body, rules, vars) {
   return 'This looks like a pill but could not be created. Check the syntax, or wrap it in backticks to keep it as text.';
 }
 
-// Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
-// see classifyBraceBody. Now also catches the bodies that used to style as valid
-// but fail promotion, e.g. {2d6kh} or {= 2*}: those classify 'invalid', not true.)
-function braceWouldPromote(body) {
-  return classifyBraceBody(body, collectRules(), collectVars()) === 'artifact';
-}
-
 // What pill type will a valid {body} become? Returns [pillType, detail|null].
 // Mirrors classifyBraceBody's branch order (same signature) so callers can pair
 // classify + label in one step without running the classification twice.
@@ -21066,7 +21042,7 @@ function braceTypeLabel(body, rules, vars) {
 // would promote to a pill (or was unfolded from an existing artifact) in a
 // .gr-src span so it reads as editable grammar text.
 // unfoldedSet: optional Set of {sh} strings from the current unfold session —
-// always highlighted even if braceWouldPromote returns false (e.g. {color} when
+// always highlighted even if classifyBraceBody says it would not promote (e.g. {color} when
 // the rule isn't defined yet in this document).
 function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
@@ -21122,7 +21098,7 @@ function anchorEditInlines(html) {
 function editModeHTML(node) {
   const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
-  // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
+  // styled as .gr-src even if classifyBraceBody says it would not promote (e.g. {color} when
   // the rule isn't currently defined in the document).
   const unfolded = _unfoldData.get(node);
   const unfoldedSet = unfolded?.length ? new Set(unfolded.map(u => u.sh)) : null;
@@ -24283,7 +24259,7 @@ function checkSlash(content, nodeId, opts) {
   // when the query is empty, so the "no matches -> hide" branch below can never fire for it.
   if (slashOffset !== 0 && !rawQuery && !(opts && opts.force)) { hideSlashMenu(); return; }
   if (m[2] === '/' && slashOffset !== 0 && nodeById(nodeId)?.type === 'para') { hideSlashMenu(); return; }
-  const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
+  const { query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
   // menu door too; the actual key (due vs start) is read from the query at apply time.
@@ -24409,7 +24385,7 @@ function positionSlashMenu(content, slashOffset) {
 const leanSlashTip = document.getElementById('lean-slash-tip');
 function renderLeanSlashTip() {
   if (!slashState || !leanSlashTip) return;
-  const { matches, activeIdx, content, slashOffset, trigger } = slashState;
+  const { matches, activeIdx, content, slashOffset } = slashState;
   const cmd = matches[activeIdx];
   if (!cmd) { leanSlashTip.classList.remove('on'); return; }
   const pos = activeIdx + 1, total = matches.length;
@@ -25966,7 +25942,7 @@ function openInsertDialog(opts) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'ok', role: 'commit', label: opts.submitLabel || 'Insert', onClick: () => submit() },
   ]);
-  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
+  const okBtn = _shell.btns.ok;
 
   // GUIDE entry below the dialog form when nested in the builder
   if (isNested && _dialogGuideCmd) {
@@ -27429,7 +27405,7 @@ function depsChanged(deps, vars) {
 // Returns the expanded string, or null if the definition is malformed / origin
 // rule is missing. When `depsOut` (a plain object) is given, the vars map is
 // wrapped in recordVarReads so the caller receives the expansion's input
-// snapshot (#827 item 5) — omitted by previews and expandText, so recording
+// snapshot (#827 item 5) — omitted by previews, so recording
 // costs nothing outside the freeze paths.
 function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   const parsed = parseRules(def);
@@ -27439,13 +27415,6 @@ function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   if (!rules[start]) return null;
   const baseVars = vars || collectVars();
   return expandRule(start, { rules, vars: depsOut ? recordVarReads(baseVars, depsOut) : baseVars, depth: 0, stack: [] });
-}
-
-// Expand a plain string's {…} against document-wide rules + variables. Used by
-// any artifact that wants composition (e.g. roll-table entries that roll dice or
-// call rules). A bare string with no braces comes back unchanged.
-function expandText(str) {
-  return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [] });
 }
 
 // Expand a random-pick variable's source ONCE against the document namespace.
@@ -33533,7 +33502,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   // setMode() below rewrites this button's text (the D2 two-verb rule: a random-pick var creates
   // with "Roll", a formula var with its submitLabel), which is exactly why the shell hands the
   // element back rather than owning the label.
-  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
+  const okBtn = _shell.btns.ok;
 
   function valid() {
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
@@ -36533,7 +36502,7 @@ function pickerRefusedMessage(what, fallback) {
 // searchQuery/searchQueryLC/searchTerms · undoStack/redoStack ·
 // autosaveDisabled · storageWarnState · _checkVerdicts.
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
-// forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
+// forcedTheme · fullWidth · accentId · agendaView · agendaShowRunning ·
 // agendaShowDone.
 function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null, restoreFocusId = null } = {}) {
   // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
@@ -37664,7 +37633,6 @@ function scanReparseList(present, cache) {
 // different file). getFile() is a metadata read (lastModified/size); only .text() reads content.
 let _wsScanCache = new Map();   // name -> {lastModified, size, state, docId?, root?}
 let _wsScanDir = null;
-let _wsLastScanReparsed = 0;    // instrumentation: files actually re-parsed on the last scan
 async function scanWorkspace(dir) {
   if (dir !== _wsScanDir) { _wsScanCache = new Map(); _wsScanDir = dir; }
   const present = [], fileByName = new Map();
@@ -37676,7 +37644,6 @@ async function scanWorkspace(dir) {
     } catch (_) { /* skip a file that vanished mid-scan */ }
   }
   const reparse = new Set(scanReparseList(present, _wsScanCache));
-  _wsLastScanReparsed = reparse.size;
   const next = new Map();       // the fresh cache — exactly the present set, so deletions drop out
   for (const { name, lastModified, size } of present) {
     if (!reparse.has(name)) { next.set(name, _wsScanCache.get(name)); continue; }   // unchanged → reuse
@@ -37770,7 +37737,7 @@ async function switchWorkspaceDoc(name) {
   // doc NOW and write it directly to ITS OWN handle before adopting, awaited so it lands.
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);          // stop the debounce firing against the new doc
-    const outHandle = workspaceFile, outName = fileName;
+    const outName = fileName;
     const outOpml = withFoldedActive(() => toOpml(root));
     try {
       await safeWriteOpml(workspaceDir, outName, outOpml);   // atomic write to the outgoing file
@@ -41775,7 +41742,6 @@ let agendaOpen = false;
 // (a single switcher, not additive stacked bars): '' = List only, or 'week'|'month'|
 // 'timeline'. Clicking the active view again returns to List-only.
 let agendaView = '';
-let agendaBars = { timeline: false, calendar: false };  // legacy (persisted) — migrated to agendaView on load
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 let agendaOverdueOnly = false;  // focus filter: when on, every view shows only overdue items
@@ -42613,7 +42579,6 @@ function renderAgendaCalendar(host, visible, totalDated) {
     else { ich.setAttribute('aria-hidden', 'true'); ich.style.pointerEvents = 'none'; }
     return ich;
   };
-  const mkItem = (it) => mkChip(it, { nav: true });
   // Fill ONE month grid from `anchor`. `side` (prev/next) months are display-only: their
   // cells aren't focusable and a whole-month click switches to that month.
   function paintMonth(gridEl, anchor, side) {
@@ -43795,7 +43760,6 @@ document.getElementById('btn-rolllog-tb')?.addEventListener('click', toggleRollL
 // Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 // leaves the menu open, so the user can try each tier and watch the app change behind the dialog.
 // The keyboard cycle (⌘⇧.) still works; both paths converge on setVerbosity so the card stays in sync.
-const VERBOSITY_NAMES = { guided: 'Guided', standard: 'Standard', lean: 'Lean' };
 function syncVerbosityCard() {
   document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
     const on = el.dataset.tier === verbosity;
@@ -43953,7 +43917,7 @@ function buildToolbarChooser() {
   const host = document.getElementById('fm-toolbar-opts');
   if (!host) return;
   host.innerHTML = '';
-  let _dragSrc = null, _dragEl = null, _dragY = 0;
+  let _dragEl = null, _dragY = 0;
 
   const commitOrder = () => {
     const rows = [...host.querySelectorAll('.cmd-item')];
@@ -43983,7 +43947,6 @@ function buildToolbarChooser() {
       grip.addEventListener('pointerdown', e => {
         e.preventDefault();
         e.stopPropagation();
-        _dragSrc = f;
         _dragEl = row;
         row.classList.add('tfr-dragging');
         grip.setPointerCapture(e.pointerId);
@@ -44016,11 +43979,11 @@ function buildToolbarChooser() {
             commitOrder();
           }
         }
-        _dragSrc = null; _dragEl = null;
+        _dragEl = null;
       });
       grip.addEventListener('pointercancel', () => {
         if (_dragEl) _dragEl.classList.remove('tfr-dragging');
-        _dragSrc = null; _dragEl = null;
+        _dragEl = null;
       });
 
       row.appendChild(grip);
