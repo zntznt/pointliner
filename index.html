@@ -1658,7 +1658,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sel-tb{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;gap:3px;align-items:center;box-shadow:var(--sh-1);transform:translateX(-50%)}
 #sel-tb.on{display:flex}
 #sel-tb .cmd-icon{cursor:pointer}
-#sel-tb .cmd-icon:hover{background:var(--acc);color:var(--acc-fg)}
+#sel-tb .cmd-icon:hover,#sel-tb .cmd-icon.kb-active{background:var(--acc);color:var(--acc-fg)}
 #sel-tb .cmd-sep{width:1px;height:20px;background:var(--bdr);margin:0 1px;flex-shrink:0}
 #sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
@@ -3198,7 +3198,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <div id="outline"></div>
 
 <!-- selection toolbar (dark) -->
-<div id="sel-tb"></div>
+<div id="sel-tb" role="toolbar" aria-label="Format the selection"></div>
 <!-- bullet popup -->
 <div id="bpop" role="menu" aria-label="Point actions"></div>
 <!-- column operations panel -->
@@ -3854,12 +3854,16 @@ function countParts(body) {
 // resolveBrace, which only ever sees the body. The scope lives in the text or it cannot survive a
 // re-roll. A bonus over the scoped query pill: this DOES unfold in edit mode, because the text can
 // say it. Same pre-colon modifier shape as {prop KEY: …} / {date due: …} / {rule Name: …}.
+// #1659: an optional COUNT before the modifier deals that many DISTINCT matching points,
+// {roll 3: #history}, the same `N` slot and 1-99 range {shuffle 3: a | b} already uses.
 function rollParts(body) {
-  const m = /^roll(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
+  const m = /^roll(?:\s+(\d{1,2}))?(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
   if (!m) return null;
-  const expr = m[2].trim();
+  const expr = m[3].trim();
   if (!expr) return null;                              // {roll:} with no query → not a roll
-  return { expr, folder: !!m[1] };
+  const count = m[1] ? parseInt(m[1], 10) : 1;
+  if (count < 1) return null;                          // {roll 0: …} deals nothing: an attempt, not a roll
+  return { expr, folder: !!m[2], count };
 }
 
 // LEAN FLOOR phase 1 — the promoting inline stub for a SIDECAR-backed verb. propDeclParts(body) sniffs
@@ -19532,6 +19536,12 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
 function pickOneHit(hits) {
   return hits.length ? hits[Math.floor(srand() * hits.length)] : '';   // #1243: a roll picks on-action -> session-seeded
 }
+// #1659: {roll N: …} deals N DISTINCT hits (no repeats), capped at the pool, joined the way a
+// counted shuffle deal joins. N = 1 is exactly pickOneHit, so the plain roll's draw is unchanged.
+function dealHits(hits, n = 1) {
+  if (n <= 1) return pickOneHit(hits);
+  return shuffledIndices(hits.length, srand).slice(0, n).map(i => hits[i]).join(' ');
+}
 
 // #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
 // family, joining queryReduceFolder (the reducers) and queryRowsFolder (the query pill). Same
@@ -20538,6 +20548,8 @@ function classifyBraceBody(body, rules, vars) {
   // (Unlike `seq`, there is no shred to close here: `seqParts` accepts comma-separated items, so
   // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
   if (/^shuffle\s*:/i.test(body)) return 'invalid';
+  // #1659: a counted shuffle ({shuffle 3: …}), and any deck whose list is one search, are attempts too
+  if (/^shuffle\s+\d{1,2}\s*:/i.test(body) || deckSearchHint(body)) return 'invalid';
   if (/^markov\s*:/i.test(body)) return 'invalid';
   // #1538: a family name with a colon ({deck: a | b | c}) is an attempt at a deck, not a pick
   // between "deck: a" and "b". Saying so here is what keeps it off the alternation line below.
@@ -20573,7 +20585,7 @@ function classifyBraceBody(body, rules, vars) {
   // UXP-253 parity: query/count/roll committed to their keyword (opened with `verb:`) but the tail did
   // not parse — an ATTEMPT, not prose. Without this a `{count: }` / `{query:}` / `{roll: }` (empty or
   // malformed tail) fell through to 'literal' and leaked its raw braces into rendered prose with no cue.
-  if (/^(?:query|count|roll)\s*:/i.test(body)) return 'invalid';
+  if (/^(?:query|count|roll(?:\s+\d+)?(?:\s+folder)?)\s*:/i.test(body)) return 'invalid';
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
   if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
@@ -20904,7 +20916,9 @@ function braceAttemptReason(body, rules, vars) {
   if (/^meter\s*:/i.test(body)) return 'A meter reads a value over its max: try {meter: hp/hpmax} or {meter: 8/12}.';
   // {shuffle|cycle|once|stopping: <bad list>}. #1591: each mode in its own words (#1505's rule). This
   // sent all four to {shuffle: …}, which nobody heard while only shuffle could be called an attempt.
-  const deckMode = /^(shuffle|cycle|once|stopping)\s*:/i.exec(body);
+  const dsh = deckSearchHint(body);
+  if (dsh) return dsh;
+  const deckMode = /^(shuffle|cycle|once|stopping)(?:\s+\d{1,2})?\s*:/i.exec(body);
   if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];
   // {markov: <no arrows>}
   if (/^markov\s*:/i.test(body)) return 'A markov chain links states with arrows: try {markov: a→b, b→c}.';
@@ -22455,8 +22469,51 @@ function buildSelTb() {
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
   selTb.appendChild(fnIc);
+  selTb.querySelectorAll('.cmd-icon').forEach((el, i) => { el.id = 'seltb-opt-' + i; });
 }
 buildSelTb();
+
+// #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+// roves its rows: focus and the selection stay in the point (aria-activedescendant), so every
+// action still reads the live selection, and Enter/Space dispatch the icon's own mousedown, as
+// #bpop does. Any other key leaves the toolbar and does its usual job.
+let selTbKbd = null;   // { host, idx } while the toolbar owns the arrows
+// Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+// icon at that index; {exit} = leave the toolbar (pass: and let the key act as it normally would).
+function selTbKey(e, active, count) {
+  if (!count) return null;
+  const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
+  if (active == null) return e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey ? { to: 0 } : null;
+  if (mod) return { exit: true, pass: true };
+  if (e.key === 'Escape') return { exit: true };
+  if (e.key === 'Enter' || e.key === ' ') return { run: active };
+  if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) return { exit: true, pass: true };
+  return { to: roveIndex(e.key, active, count) ?? active };   // null at an end: hold, never let it collapse the selection
+}
+const selTbItems = () => [...selTb.querySelectorAll('.cmd-icon')].filter(el => el.offsetParent);   // the footnote icon hides in cells
+function setSelTbActive(items, i) {
+  const host = selTbKbd?.host || document.activeElement;
+  selTbKbd = { host, idx: i };
+  items.forEach((el, j) => el.classList.toggle('kb-active', j === i));
+  host?.setAttribute('aria-activedescendant', items[i].id);
+}
+function endSelTbKbd() {
+  if (!selTbKbd) return;
+  selTb.querySelectorAll('.kb-active').forEach(el => el.classList.remove('kb-active'));
+  if (selTbKbd.host?.getAttribute('aria-activedescendant')?.startsWith('seltb-opt-')) selTbKbd.host.removeAttribute('aria-activedescendant');
+  selTbKbd = null;
+}
+// capture phase: ahead of the point's own Enter (new point) and Escape (leave the point)
+document.addEventListener('keydown', e => {
+  const items = selTb.classList.contains('on') ? selTbItems() : [];
+  const step = selTbKey(e, selTbKbd ? selTbKbd.idx : null, items.length);
+  if (!step) return;
+  if (step.pass) { endSelTbKbd(); return; }
+  e.preventDefault(); e.stopPropagation();
+  if (step.exit) endSelTbKbd();
+  else if (step.run != null) { endSelTbKbd(); items[step.run].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); }
+  else setSelTbActive(items, step.to);
+}, true);
 
 document.getElementById('nsb-copy').addEventListener('click', copySelection);
 document.getElementById('nsb-export-md').addEventListener('click', exportSelectionToMarkdown);
@@ -23003,7 +23060,7 @@ function updateSelToolbar() {
     selTb.style.top = (above < tbH + 4 ? rect.bottom + 8 : above) + 'px';
   });
 }
-function hideSelTb() { selTb.classList.remove('on'); }
+function hideSelTb() { endSelTbKbd(); selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
@@ -26908,6 +26965,7 @@ function resolveField(base, field, ctx) {
 // a top-level `:`), so it is disjoint from conditionals (which carry a comparison
 // before the `:`) and from plain alternation (which has no mode keyword).
 const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+const DECK_SEARCH_RE = /^(?:#[\w-]|(?:is|has):)/i;   // #1659: a list item that is really a search
 
 // Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
 // splits the mode from the items (an item may itself contain a `:`); items split
@@ -26930,7 +26988,20 @@ function seqParts(body) {
   if (count < 1 || (count !== 1 && mode !== 'shuffle')) return null;
   const rest = body.slice(segs[0].length + 1);
   const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
+  if (items.length === 1 && DECK_SEARCH_RE.test(items[0])) return null;   // #1659: a search, see deckSearchHint
   return items.length ? { mode, items, count } : null;
+}
+// #1659: a deck whose whole list is ONE search ({shuffle 3: #history}) used to become a one-card deck
+// dealing the literal word "#history", a silent wrong success. A deck deals a list you type; a roll is
+// the verb that reads your points. Returns the coaching sentence (naming the {roll N: …} that does it),
+// or null when the body is not that shape. Pure.
+function deckSearchHint(body) {
+  const m = /^(shuffle|cycle|once|stopping)(?:\s+(\d{1,2}))?\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const q = m[3].trim();
+  if (!DECK_SEARCH_RE.test(q) || splitTopLevel(q, '|').length > 1) return null;
+  const n = m[2] && parseInt(m[2], 10) > 1 ? ' ' + parseInt(m[2], 10) : '';
+  return 'A ' + m[1].toLowerCase() + ' deals from a list you type, not a search. To draw points that match, try {roll' + n + ': ' + q + '}.';
 }
 
 // A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
@@ -27052,13 +27123,12 @@ function resolveBrace(body, ctx) {
   if (rlp) {
     // #899: `{roll folder: …}` draws from the whole reading set instead. hostId still excludes the
     // pill's own point on both paths, so a roll can never draw itself.
-    const picked = rlp.folder
-      ? pickFromQueryFolder(rlp.expr, cookieNode ? cookieNode.id : null)
-      : pickFromQuery(rlp.expr, root, cookieNode ? cookieNode.id : null, root);
+    const hostId = cookieNode ? cookieNode.id : null;
+    const picked = dealHits(rlp.folder ? queryHitsFolder(rlp.expr, hostId) : queryHits(rlp.expr, root, hostId, root), rlp.count);
     // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
     // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232). It echoes
     // the modifier so the marker reads back as the source that made it.
-    return picked || `{roll${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
+    return picked || `{roll${rlp.count > 1 ? ' ' + rlp.count : ''}${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
   if (cp) {
@@ -29220,7 +29290,7 @@ function renderGrammarPill(key, g) {
   // would silently lose its reason and fall back to the confidently wrong "Nothing matched yet".
   let badFilter = '';
   if (emptyMark) {
-    const rm = /\{\s*roll(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
+    const rm = /\{\s*roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
     if (rm) {
       const probs = searchTermProblems(parseSearchQuery(rm[1].trim()), { states: [...knownStates()] });
       if (probs.length) badFilter = probs[0].message;
@@ -29240,7 +29310,7 @@ function renderGrammarPill(key, g) {
   // reading set is a folder of one. Say so, the way the query pill does (query-folder-off): sniff
   // the SOURCE (the isYesNoOracle content-sniff pattern, so typed and dialog-made rolls read alike)
   // and name both the scope and its staleness in the tip and the aria-label together (P3).
-  const rollSrcM = /\{\s*(roll(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
+  const rollSrcM = /\{\s*(roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
   const folderRoll = !!(rollSrcM && rollParts(rollSrcM[1])?.folder);
   const folderLive = folderRoll && !!workspaceIndex?.roots;
   const scopeTip = !folderRoll ? '' : folderLive
@@ -44405,6 +44475,7 @@ const GUIDE = [
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
   { id:'edit-format', essential:true, essSection:'Edit', keys:[`${MOD}+B`,`${MOD}+I`,`${MOD}+U`], essLabel:'Bold / italic / underline the selection' },
+  { id:'edit-seltb',  essential:true, essSection:'Edit', keys:['Alt+F10'],             essLabel:'Reach the selection toolbar (every format, link and footnote)' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Add or tick a to-do on this line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
@@ -44643,7 +44714,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
+    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you. Every style, plus link and footnote, is also on the toolbar that appears over a selection; press Alt+F10 to reach it from the keyboard, the arrow keys to pick, and Enter to apply.",
     related:['point-types','footnotes','secret','image-size','deflist'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
@@ -45063,6 +45134,7 @@ const GUIDE = [
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
       { syn:'{roll folder: #npc}',      desc:'draw from every document in the connected folder' },
+      { syn:'{roll 3: #history}',       desc:'deal three different matching points at once, no repeats' },
     ] },
   { id:'roll-palette', cat:'generators',
     title:'Roll menu (touch)',
@@ -46195,7 +46267,15 @@ function inferRowShape(siblings, states) {
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];
-  for (const [key, vs] of vals) if (vs.length === rows.length) props.push({ key, type: inferPropType(vs) });
+  for (const [key, vs] of vals) {
+    const type = inferPropType(vs);
+    if (vs.length === rows.length) props.push({ key, type });
+    // #1658: a ticket's parts and labour lines each carry their own number, so neither was on EVERY
+    // row and the section lost every door. A number on 2+ rows is a column (the same 2+ this function
+    // already asks of rows; sum() skips a row without it); a text key stays every-row, so a stray note
+    // never becomes a field.
+    else if (type === 'number' && vs.length >= 2) props.push({ key, type, sparse: true });
+  }
   const todo = rows.every(n => rowIsTodo(n.text, states));
   if (!sharedTags.length && !props.length && !todo) return null;
   return { sharedTags, props, todo };
@@ -46211,6 +46291,7 @@ function buildRow(shape, values, textValue) {
   for (const t of (shape.sharedTags || [])) s += ' #' + t;
   for (const p of (shape.props || [])) {
     const v = String(vals[p.key] == null ? '' : vals[p.key]).trim();
+    if (p.sparse && !v) continue;   // #1658: a labour line leaves the parts column out, as its siblings do
     s += p.type === 'date' ? ` {date ${p.key}: ${v}}` : ` {prop ${p.key}: ${v}}`;
   }
   return s;
@@ -46268,7 +46349,9 @@ function deckCardText(card, answer) {
 // at-rest chrome). The visible "+ Add" affordance (phase 1b) and a /-verb call straight into this; here it
 // is reachable via openAddRowForm(headingId) for the live-drive. No new syntax — buildRow emits existing forms.
 function rowNoun(contextNode, shape) {
-  let t = String((contextNode && contextNode.text) || '').replace(/^#+\s*/, '');
+  // #1658: the DISPLAYED text (pills resolved, markers gone), never node.text: a `{= sum(honey)}` on the
+  // heading titled the dialog, toast and aria-label `Hives [[math:xi05zdeb]] kg` (the #1526 family).
+  let t = contextNode ? displayText(contextNode) : '';
   t = t.replace(ROW_TAG_RE, '').replace(/\s*\[[\/%xX \-]\]\s*$/, '').trim();
   if (t) return t;
   const tags = (shape && shape.sharedTags) || [];
@@ -46397,6 +46480,13 @@ function refreshRowChrome(nodeId) {
   maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
 }
 
+// #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
+// title for it, so + Total wrote a sum into text nobody sees ("Totalling honey", no total, P4). A
+// zoomed point shows its text as the masthead, and a row shows its own, so only the root is out.
+function doorWritesShow(node, rootNode = root) {
+  return !!node && node !== rootNode;
+}
+
 // ── #1240 phase 4: the doors of the point you are LOOKING AT ─────────────────────────────────
 // DOM-free. Every "+ Add" / "+ Total" / "+ Check" / "+ Variance" door hangs off its parent's
 // rendered row. The point you are looking AT — the document root, or the point you zoomed into —
@@ -46429,7 +46519,7 @@ function renderViewDoors(vp, container, opts = {}) {
   if (!host) return null;
   const bar = document.createElement('div');
   bar.className = 'view-doors';
-  maybeAddRowAffordance(host, bar);
+  maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });
   maybeAddFieldAffordance(host, bar);
   maybeAddCardAffordance(host, bar);
   if (!bar.children.length) return null;   // earned no doors — add no bar
@@ -46437,8 +46527,9 @@ function renderViewDoors(vp, container, opts = {}) {
   // says which point they act on (P3: the control must be self-describing out of row context).
   bar.setAttribute('role', 'group');
   // The heading markers are syntax, not the name of the thing — a screen reader saying "Add to
-  // hash hash Groceries" is the marker leaking into speech. stripMd leaves them, so drop them here.
-  const title = stripMd(String(host.text || '').replace(/^\s*#{1,6}\s+/, '')).trim();
+  // hash hash Groceries" is the marker leaking into speech. #1658: displayText drops them AND
+  // resolves a pill to its value, where stripMd left a glyph and a raw token leaked.
+  const title = displayText(host);
   bar.setAttribute('aria-label', 'Add to ' + (title || 'this document'));
   container.appendChild(bar);
   return bar;
@@ -46459,7 +46550,7 @@ function refreshViewDoors() {
   if (bar && anchor) container.insertBefore(bar, anchor);
 }
 
-function maybeAddRowAffordance(node, row) {
+function maybeAddRowAffordance(node, row, opts = {}) {
   // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
   const isHeading = /^h[1-6]$/.test(deriveTypeFromText(node.text) || '');
@@ -46504,6 +46595,10 @@ function maybeAddRowAffordance(node, row) {
                          : () => openAddRowForm(node.id);
   mkAff('+ Add', 'Add to ' + noun, onAdd);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
+  // #1658: every door below WRITES onto `node` (a sum, a check, a variance). Where its text is never
+  // rendered (the document root) the result would be invisible, so the door stays (P2) but refuses
+  // with the way out instead of a "Totalling" toast over nothing (P4).
+  const writes = fn => opts.noWrite ? () => flashHint('The top of a document has no line to show this on. Indent these points under a heading first.') : fn;
   // #1281: "add up a column here" — the panel's #1 wall. When the flat rows carry a number property, a
   // point-and-click door totals that column with a child-scoped {= sum(KEY)} (correct on THIS heading, no
   // scope recall, no braces typed). One number column -> "+ Total"; several -> one door each. Skip a
@@ -46513,35 +46608,35 @@ function maybeAddRowAffordance(node, row) {
   // ponytail: prefix collision (cost vs costume) at worst hides a duplicate door; harmless.
   for (const key of numKeys) {
     if (summed(key)) continue;
-    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', () => {
+    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', writes(() => {
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + key + ')}';
       promoteLoadedShorthand(node);      // {= sum(KEY)} -> a live math pill, the load path's promoter
       buildIndex(root, null); markDirty(); render();
       flashHint('Totalling ' + key);
-    });
+    }));
   }
   // #1281 check door — the sum/CHECK half of the wall (panel #1284, "trust the numbers"). One "+ Check"
   // on the first number column opens the check dialog with the scary part already written (sum(KEY) <= ),
   // so the user supplies only the limit; the check then flags the heading when the column crosses it.
   // Skipped when the heading already carries a check, so the door never fights an existing one.
   if (numKeys.length && !checkExprOf(node)) {
-    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', () => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= '));
+    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', writes(() => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= ')));
   }
   // #1312 variance door (panel re-run, Fiona at adopt): quote-vs-actual. On a section with EXACTLY two
   // number columns, one click writes the over/under with no hand-authoring: a per-row {= B - A} (a
   // property is a variable, so each row reads its own two numbers) and a total {= sum(B) - sum(A)} on the
   // heading. Columns in document order are A (e.g. quote) then B (e.g. actual), so a positive result is
   // over. Skipped once a variance (any `- sum(` on the heading) exists, so the door never doubles up.
-  if (numKeys.length === 2 && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
+  if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
     const [a, b] = numKeys;
     const has = (c, k) => (c.props || []).some(p => (p.key || '').trim().toLowerCase() === k.toLowerCase());
-    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', () => {
+    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', writes(() => {
       for (const c of node.children) if (has(c, a) && has(c, b)) { c.text = c.text.replace(/\s+$/, '') + ' {= ' + b + ' - ' + a + '}'; promoteLoadedShorthand(c); }
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + b + ') - sum(' + a + ')}';
       promoteLoadedShorthand(node);
       buildIndex(root, null); markDirty(); render();
       flashHint('Added ' + b + ' minus ' + a + ' variance');
-    });
+    }));
   }
 }
 // #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).

@@ -1834,17 +1834,73 @@ test('#1240 viewDoorHost: the view hosts the doors only when a row cannot', () =
   assert.doesNotThrow(() => c.viewDoorHost(shaped));
 });
 
+// #1658 (panel #8). At the top of a document the view bar hosts the ROOT's doors, and the root's
+// text is rendered nowhere, so + Total wrote `{= sum(honey)}` into it: a "Totalling honey" toast and
+// no total anywhere (P4). A door that writes onto its host is offered only where the host shows.
+test('#1658 doorWritesShow: the document root is never written by a door', () => {
+  const doc = { text: '', children: [] }, heading = { text: '## Hives', children: [] };
+  doc.children.push(heading);
+  assert.equal(c.doorWritesShow(doc, doc), false, 'the root renders no text, so nothing may land there');
+  assert.equal(c.doorWritesShow(heading, doc), true, 'a zoomed or row-hosted point shows its own text');
+  assert.equal(c.doorWritesShow(null, doc), false);
+  // CALL SITES: the view bar passes it, and EVERY writing door is wrapped (counted, so a fourth
+  // writing door added bare fails here). + Add is not wrapped: it adds a row, which does show.
+  assert.match(fnBody(_src, 'renderViewDoors'), /maybeAddRowAffordance\(host, bar, \{ noWrite: !doorWritesShow\(host\) \}\)/);
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /const writes = fn => opts\.noWrite \? \(\) => flashHint\('The top of a document/, 'a refusal says why (P4)');
+  assert.equal((aff.match(/', writes\(\(\) =>/g) || []).length, 3, '+ Total, + Check and + Variance all go through writes()');
+  assert.ok(!/mkAff\('\+ Add'[^\n]*writes\(/.test(aff), '+ Add still adds at the top level');
+});
+
+// #1658: the door labels read node.text raw, so `## Hives {= sum(honey)} kg` titled the dialog
+// `Add to "Hives [[math:xi05zdeb]] kg"` and said the token to a screen reader. Same family as #1526.
+test('#1658 rowNoun names the list by its displayed text, never a pill token', () => {
+  const n = { id: 'h', type: 'h2', text: '## Hives [[math:k1]] kg #apiary', math: [{ key: 'k1', expr: '2 + 3' }], children: [] };
+  const noun = c.rowNoun(n, null);
+  assert.ok(!/\[\[|\]\]/.test(noun), 'no raw token: ' + noun);
+  assert.match(noun, /^Hives\b.*kg$/, 'the heading marker and tag go, the words stay: ' + noun);
+  assert.equal(c.rowNoun({ text: '', children: [] }, { sharedTags: ['hive'] }), 'hive', 'the tag fallback still works');
+  // and the view bar's group name says the same thing, not stripMd's pill glyph
+  assert.match(fnBody(_src, 'renderViewDoors'), /displayText\(host\)/);
+});
+
+// #1658: a repair ticket has parts lines and labour lines; a column counted only when EVERY row
+// carried it, so the section got no doors at all, not even + Add. Not a "most rows" fraction (the
+// ticket is 2 of 4 each, and #1132 bans the unmeasured constant): a NUMBER key on two or more rows
+// is a column, marked sparse. A text key stays every-row, so an occasional note is not a field.
+test('#1658 inferRowShape: a sparse number column is still a column', () => {
+  const row = (text, props = []) => ({ id: 'x', text, props, children: [] });
+  const j = o => JSON.stringify(o);
+  const ticket = [
+    row('Pads', [{ key: 'parts', val: '24.99' }]), row('Chain', [{ key: 'parts', val: '39.5' }]),
+    row('Tune-up', [{ key: 'hours', val: '1.5' }]), row('Truing', [{ key: 'hours', val: '0.5' }]),
+  ];
+  assert.equal(j(c.inferRowShape(ticket)), j({ sharedTags: [], props: [
+    { key: 'parts', type: 'number', sparse: true }, { key: 'hours', type: 'number', sparse: true }], todo: false }));
+  assert.equal(j(c.inferRowShape([...ticket, row('Bell', [{ key: 'note', val: 'loud' }]), row('Lock', [{ key: 'note', val: 'cut' }])]).props.map(p => p.key)),
+    j(['parts', 'hours']), 'a text key on some rows is not a column');
+  assert.equal(c.inferRowShape([row('a', [{ key: 'n', val: '1' }]), row('b', [{ key: 'm', val: '2' }])]), null,
+    'a number on ONE row is not a column');
+  // a filled form leaves a blank sparse column out, rather than writing `{prop parts: }`
+  const shape = c.inferRowShape(ticket);
+  assert.equal(c.buildRow(shape, { hours: '2' }, 'Bleed'), 'Bleed {prop hours: 2}');
+  // + Variance pairs columns that live on the SAME rows; two sparse columns that never meet would
+  // write a meaningless sum(hours) - sum(parts).
+  assert.match(fnBody(_src, 'maybeAddRowAffordance'), /numKeys\.length === 2 && !shape\.props\.some\(p => p\.sparse\)/);
+});
+
 test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the row builders', () => {
   const fn = fnBody(_src, 'renderViewDoors');
   // It must call the SAME builders the row path calls. A copy of their gating would drift, which is
   // the sibling-divergence trap; pin the reuse so a future edit cannot quietly fork it.
   for (const b of ['maybeAddRowAffordance', 'maybeAddFieldAffordance', 'maybeAddCardAffordance'])
-    assert.ok(fn.includes(b + '(host, bar)'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
+    assert.ok(fn.includes(b + '(host, bar'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
   assert.ok(/if \(!bar\.children\.length\) return null/.test(fn),
     'a bar that earned no doors must not be appended — an ordinary prose outline grows no chrome');
   assert.ok(/role', 'group'/.test(fn) && /aria-label/.test(fn),
     'out of row context the group must say which point it acts on (P3)');
-  assert.ok(/#\{1,6\}/.test(fn),
+  // #1658: displayText strips them (textForDisplay) and resolves pills, which the old regex did not.
+  assert.ok(/displayText\(host\)/.test(fn),
     'the heading markers must be stripped from the label — a reader saying "hash hash Groceries" is syntax leaking into speech');
   // The call site, not just the function: a tested builder proves nothing about whether render calls it.
   assert.ok(/renderViewDoors\(vp, container, \{ corkOn, searchQuery \}\)/.test(_src),
@@ -2458,6 +2514,56 @@ function withRollScopeRoot(fn) {
   try { return fn(r); }
   finally { vm.runInContext('root = mkRoot(); cookieNode = null; resetDocCaches();', c._context); }
 }
+
+// #1659 (panel #8): a quiz host wanted "three history questions, no repeats". {roll 3: #history}
+// stayed literal with no cue, and {shuffle 3: #history} became a one-card deck dealing the word.
+test('#1659 {roll N: …} deals N distinct matching points; a deck holding one search coaches toward it', () => {
+  assert.deepEqual(host(c.rollParts('roll 3: #history')), { expr: '#history', folder: false, count: 3 });
+  assert.deepEqual(host(c.rollParts('roll 2 folder: #npc')), { expr: '#npc', folder: true, count: 2 });
+  assert.equal(c.rollParts('roll 0: #history'), null);
+  assert.equal(c.rollParts('roll 3:'), null);
+  // was 'literal' with no cue (P4); now a real roll, and {roll 0:} is a marked attempt
+  assert.equal(c.classifyBraceBody('roll 3: #history', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('roll 0: #history', {}, {}), 'invalid');
+  // dealHits: N distinct, capped at the pool; N = 1 is the single pick
+  const pool = ['Q1', 'Q2', 'Q3', 'Q4'];
+  for (let k = 0; k < 50; k++) {
+    const three = c.dealHits(pool, 3).split(' ');
+    assert.equal(three.length, 3);
+    assert.equal(new Set(three).size, 3, 'no repeats in one deal');
+    assert.ok(three.every(q => pool.includes(q)));
+  }
+  assert.equal(c.dealHits(pool, 9).split(' ').length, 4, 'capped at the pool');
+  assert.ok(pool.includes(c.dealHits(pool, 1)));
+  assert.equal(c.dealHits([], 3), '');
+  // end to end through the roll branch of resolveBrace, on a real tree (four #openq points)
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  withRollScopeRoot(() => {
+    for (let k = 0; k < 20; k++) {
+      const got = c.resolveBrace('roll 3: #openq', ctx).split(' ');
+      assert.equal(new Set(got).size, 3, got.join(' '));
+      assert.ok(got.every(w => ['alpha', 'beta', 'gamma', 'delta'].includes(w)), got.join(' '));
+    }
+    assert.equal(c.resolveBrace('roll 3: #nothing', ctx), '{roll 3: #nothing?}');
+  });
+  // a deck whose whole list is one search no longer parses as a deck of the literal word
+  assert.equal(c.seqParts('shuffle 3: #history'), null);
+  assert.equal(c.seqParts('shuffle: is:todo'), null);
+  assert.equal(c.classifyBraceBody('shuffle 3: #history', {}, {}), 'invalid');
+  assert.equal(c.classifyBraceBody('cycle: #history', {}, {}), 'invalid');
+  assert.equal(c.braceAttemptReason('shuffle 3: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll 3: #history}.');
+  assert.equal(c.braceAttemptReason('shuffle: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll: #history}.');
+  // a typed list of tags is still a real deck, and so is ordinary text
+  assert.equal(host(c.seqParts('shuffle: #a | #b')).items.length, 2);
+  assert.equal(c.deckSearchHint('shuffle: #a | #b'), null);
+  assert.equal(c.deckSearchHint('shuffle: hashtag'), null);
+  assert.equal(host(c.seqParts('shuffle 2: a | b | c')).count, 2);
+  // the pill's def sniffs (bad-filter reason, folder scope tip) must read the counted head too
+  assert.ok(_src.includes('/\\{\\s*roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:([^{}]*)\\}/i'));
+  assert.ok(_src.includes('/\\{\\s*(roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:[^{}]*)\\}/i'));
+});
 
 // #1107 drift guard. There was no test that loaded shipped content and checked a roll RESOLVES,
 // which is why five starters, the first-run tour and the living-oracle demo could all ship with
@@ -11736,15 +11842,15 @@ test('folder-scoped reducers + query rows: sum/count("q", …, folder) across th
 
 test('#899 rollParts: an optional `folder` modifier, and `folder` stays searchable text', () => {
   // the plain form is untouched
-  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false, count: 1 });
   // the modifier widens the draw
-  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true });
-  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true });
+  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true, count: 1 });
   // THE load-bearing guarantee (the §4c decision: `folder` must stay searchable TEXT). A query FOR
   // the word "folder" is not a folder-scoped roll — the modifier lives before the colon, never in
   // the query. Without this, {roll: folder} would silently stop meaning what it says.
-  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false });
-  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false, count: 1 });
   // an empty query is not a roll, modifier or not
   assert.equal(c.rollParts('roll folder:'), null);
   assert.equal(c.rollParts('roll:'), null);
@@ -15249,7 +15355,7 @@ test('UXP-232: the roll pill and the math pill carry the reason too', () => {
   // #899: the extraction regex must accept the OPTIONAL `folder` modifier, or a folder roll with an
   // unreadable filter loses its reason. The old form of this line fell back to gp.includes('roll'),
   // which is true of every grammar pill — vacuous. Pin the widened regex itself.
-  assert.ok(/roll\(\?:\\s\+folder\)\?\\s\*:/.test(gp),
+  assert.ok(/roll\(\?:\\s\+\\d\{1,2\}\)\?\(\?:\\s\+folder\)\?\\s\*:/.test(gp),   // #1659: and the count
     'it reads the query back out of g.def, modifier or not');
   // Assert the ternary's SHAPE, not string positions: the comment above it quotes the old copy,
   // so indexOf would measure the comment rather than the code (the same trap the announce() count
@@ -37296,7 +37402,9 @@ test('#1281: a placeholder row and the app’s own timestamps are not columns', 
 
   // The dropping is scoped to rows that carry NO information: a blank-texted row with a real
   // property is still data, and must still be able to break a column that it genuinely lacks.
-  assert.equal(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]), null,
+  // (#1658: cost on 3 of 4 rows is now a SPARSE column rather than none, which is the proof it counted.)
+  assert.equal(JSON.stringify(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]).props),
+    JSON.stringify([{ key: 'cost', type: 'number', sparse: true }]),
     'a propertied row with no text still counts, so cost stops being on every row');
   // and the under-2 gate counts REAL rows, not placeholders
   assert.equal(c.inferRowShape([priced(1), row(''), row('')]), null, 'one real row plus blanks is not a list');
@@ -39796,14 +39904,12 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     'renderTreeRows:row':   { why: 'the point-tree picker: its search box owns ↑/↓/Enter (activedescendant)', proof: /search\.setAttribute\('aria-activedescendant', 'tp-opt-' \+ activeIdx\)/ },
     'showCellEditorPop:b':  { why: 'the status popover is the pointer path; the cell’s Shift+F10 menu "Set to" rows are its keyboard twin', proof: /addSection\('Set to', true\);/ },
     'showCellEditorPop:none': { why: 'its Clear, twinned by the same menu’s Clear row', proof: /addItem\('Clear', \{ active: curVal === '', onApply/ },
+    // #1542: the selection toolbar roves from the caret (Alt+F10, activedescendant) and Enter/Space
+    // dispatch the active icon's mousedown, so the icons' keyboard half lives in one capture listener.
+    ...Object.fromEntries(['ic', 'linkIc', 'fnIc'].map(r => [`buildSelTb:${r}`, { why: '#sel-tb: Alt+F10 roves it from the caret, Enter/Space dispatch the icon mousedown',
+      proof: /else if \(step\.run != null\) \{ endSelTbKbd\(\); items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}/ }])),
     "(top):document.getElementById('btn-graph')": { why: 'a pre-click snapshot of the caret, not the action; the button’s own click is what Enter/Space fire', proof: /document\.getElementById\('btn-graph'\)\.addEventListener\('click', toggleGraph\);/ },
   };
-  // #1542: KNOWN GAP, deliberately allowlisted and NOT fixed here: the selection toolbar's format,
-  // link and footnote icons act on mousedown with no keyboard twin, which leaves 5 of its 9 actions
-  // without a keyboard path. It needs a focus model for a floating toolbar first (#1542). This list
-  // may only SHRINK: the day one of these gains a twin, its entry goes stale and fails below, and a
-  // NEW twin-less site anywhere fails the census rather than joining this list quietly.
-  const KNOWN_GAP_1542 = new Set(['buildSelTb:ic', 'buildSelTb:linkIc', 'buildSelTb:fnIc']);
 
   const dead = [], used = new Set(), twins = new Set();
   for (const s of sites) {
@@ -39811,7 +39917,7 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     if (s.recv === 'document' || s.recv === 'window') continue;            // the page itself: dismissal, bookkeeping
     const key = `${s.fn}:${s.recv}`;
     if (hasKeyTwin(s.scope, s.recv)) { twins.add(key); continue; }
-    if (EXEMPT[key] || KNOWN_GAP_1542.has(key)) { used.add(key); continue; }
+    if (EXEMPT[key]) { used.add(key); continue; }
     dead.push(key);
   }
   assert.deepEqual(dead, [],
@@ -39821,11 +39927,40 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     assert.ok(used.has(k), `stale exemption: ${k} no longer acts without a twin, so remove it from EXEMPT`);
     assert.match(_src, EXEMPT[k].proof, `${k}: the evidence for "${EXEMPT[k].why}" is gone, so the exemption is no longer true`);
   }
-  for (const k of KNOWN_GAP_1542) {
-    assert.ok(used.has(k), `${k} has a keyboard twin now (or moved): take it off the #1542 allowlist`);
-  }
   // and the two #1586 sites are counted as twinned BY the census, not merely present
   assert.ok(twins.has('buildChipRow:b'), 'the insert-dialog chip is a twinned control');
+});
+
+// #1542: the selection toolbar's keyboard door, as a pure step and its wiring.
+test('#1542 selTbKey: Alt+F10 enters, arrows rove, Enter/Space run, Escape leaves, anything else passes', () => {
+  const k = (key, m = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...m });
+  const step = (...a) => { const r = c.selTbKey(...a); return r && { ...r }; };   // out of the vm realm
+  assert.deepEqual(step(k('F10', { altKey: true }), null, 8), { to: 0 }, 'Alt+F10 lands on the first icon');
+  assert.equal(step(k('F10', { altKey: true }), null, 0), null, 'no toolbar on screen, no claim');
+  assert.equal(step(k('F10', { altKey: true, shiftKey: true }), null, 8), null, 'Shift+Alt+F10 is not the door');
+  assert.equal(step(k('F10', { shiftKey: true }), null, 8), null, 'Shift+F10 stays the context menu');
+  assert.equal(step(k('Enter'), null, 8), null, 'outside the toolbar, Enter is the point\'s');
+  assert.deepEqual(step(k('ArrowRight'), 2, 8), { to: 3 });
+  assert.deepEqual(step(k('ArrowLeft'), 0, 8), { to: 0 }, 'ends clamp, as every roving group does');
+  assert.deepEqual(step(k('End'), 2, 8), { to: 7 });
+  assert.deepEqual(step(k('End'), 7, 8), { to: 7 }, 'an end key at the end holds rather than passing to the caret');
+  assert.deepEqual(step(k('PageDown'), 1, 8), { exit: true, pass: true }, 'a key the toolbar has no use for is not swallowed');
+  assert.deepEqual(step(k('Enter'), 4, 8), { run: 4 });
+  assert.deepEqual(step(k(' '), 5, 8), { run: 5 });
+  assert.deepEqual(step(k('Escape'), 5, 8), { exit: true }, 'Escape leaves the toolbar only');
+  assert.deepEqual(step(k('a'), 1, 8), { exit: true, pass: true }, 'typing leaves and types');
+  assert.deepEqual(step(k('ArrowLeft', { shiftKey: true }), 1, 8), { exit: true, pass: true }, 'Shift+arrows still extend the selection');
+});
+
+test('#1542 the toolbar door is wired: capture phase, stamped ids, cleared on hide', () => {
+  const door = between(_src, 'let selTbKbd = null;', '}, true);');
+  assert.match(door, /const step = selTbKey\(e, selTbKbd \? selTbKbd\.idx : null, items\.length\);/, 'the listener asks the pure step');
+  assert.match(door, /e\.preventDefault\(\); e\.stopPropagation\(\);/, 'a claimed key never reaches the point (Enter would split it)');
+  assert.match(_src, /items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}\n  else setSelTbActive\(items, step\.to\);\n\}, true\);/,
+    'registered in the capture phase, ahead of the point\'s own keys');
+  assert.match(fnBody(_src, 'buildSelTb'), /el\.id = 'seltb-opt-' \+ i;/, 'every icon gets the id activedescendant names');
+  assert.match(fnBody(_src, 'hideSelTb'), /endSelTbKbd\(\);/, 'a hidden toolbar cannot keep the arrows');
+  assert.match(_src, /<div id="sel-tb" role="toolbar" aria-label="Format the selection"><\/div>/);
 });
 
 // The other half of the family: a <div>/<span> with a click listener and nothing else is mouse-only

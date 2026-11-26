@@ -196,7 +196,7 @@ export function loadCores() {
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
-    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
+    'seqParts', 'deckSearchHint', 'dealHits', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
@@ -209,6 +209,7 @@ export function loadCores() {
     'timelineModel',   // #516 timeline pure core
     'overlayCountMessage',   // UXP-241: what a graph/timeline toggle announces after a re-render
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
+    'selTbKey',    // #1542: what one key does to the selection toolbar's Alt+F10 roving
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
@@ -376,7 +377,7 @@ export function loadCores() {
     'collectChronicleDates',   // #652 chronicle (in-world game log) timeline source
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'addRowTarget',  // #1438: which list `/addrow` acts on from the caret
-    'viewDoorHost',   // #1240 phase 4: which node's doors the VIEW hosts
+    'viewDoorHost', 'doorWritesShow', 'rowNoun',   // #1240 phase 4: which node's doors the VIEW hosts
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)

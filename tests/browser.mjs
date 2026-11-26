@@ -9249,3 +9249,64 @@ test('#1661 printing shows only the outline, with no doors and the open point co
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });
+
+// #1542: five of the selection toolbar's nine actions (code, strikethrough, highlight, link,
+// footnote) had no keyboard path: its icons act on mousedown and nothing moved focus to them.
+// Alt+F10 from the caret now roves the toolbar while focus and the selection stay in the point.
+test('#1542 Alt+F10 reaches the selection toolbar, and Enter, Space and Escape do what they say', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Buy milk now', { delay: 12 });
+    const select = async () => {
+      await pg.keyboard.press('End');
+      for (let i = 0; i < 3; i++) await pg.keyboard.press('Shift+ArrowLeft');
+      await pg.waitForTimeout(250);
+      assert.ok(await pg.evaluate(() => document.getElementById('sel-tb').classList.contains('on')),
+        'precondition: an intentional selection shows the toolbar');
+    };
+    const state = () => pg.evaluate(() => {
+      const c = document.activeElement, id = c?.getAttribute('aria-activedescendant');
+      return { inPoint: !!c?.matches('.node-content[data-editing]'), label: id ? document.getElementById(id)?.getAttribute('aria-label') : null,
+        painted: [...document.querySelectorAll('#sel-tb .kb-active')].map(el => el.getAttribute('aria-label')),
+        sel: String(window.getSelection()), text: root.children[0].text };
+    });
+    // rove to the icon named `label` with ArrowRight, as a user reading the announcements would
+    const roveTo = async label => {
+      for (let i = 0; i < 12 && (await state()).label !== label; i++) await pg.keyboard.press('ArrowRight');
+      assert.equal((await state()).label, label, `ArrowRight reaches ${label}`);
+    };
+
+    await select();
+    await pg.keyboard.press('Alt+F10');
+    let s = await state();
+    assert.equal(s.inPoint, true, 'focus stays in the point, so the selection survives the excursion');
+    assert.equal(s.label, 'Bold', 'Alt+F10 lands on the first action');
+    assert.deepEqual(s.painted, ['Bold'], 'exactly the active icon is painted');
+    await pg.keyboard.press('ArrowLeft');
+    s = await state();
+    assert.deepEqual([s.label, s.sel], ['Bold', 'now'], 'ArrowLeft at the first icon holds and keeps the selection');
+    await roveTo('Strikethrough');
+    assert.equal((await state()).sel, 'now', 'roving moves no caret and drops no selection');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(200);
+    s = await state();
+    assert.equal(s.text, 'Buy milk ~~now~~', 'Enter runs the active action, the same wrap the mouse gets');
+    assert.equal(s.label, null, 'and leaves the toolbar');
+
+    await pg.evaluate(() => { root.children[0].text = 'Buy milk now';
+      const c = document.querySelector('.node-content[data-editing]'); c.innerHTML = editModeHTML(root.children[0]); setCaretByOffset(c, 0); });
+    await select();
+    await pg.keyboard.press('Alt+F10'); await roveTo('Highlight');
+    await pg.keyboard.press(' '); await pg.waitForTimeout(200);
+    assert.equal((await state()).text, 'Buy milk ==now==', 'Space runs it too');
+
+    await pg.evaluate(() => { root.children[0].text = 'Buy milk now';
+      const c = document.querySelector('.node-content[data-editing]'); c.innerHTML = editModeHTML(root.children[0]); setCaretByOffset(c, 0); });
+    await select();
+    await pg.keyboard.press('Alt+F10'); await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
+    s = await state();
+    assert.deepEqual([s.inPoint, s.label, s.painted, s.sel, s.text], [true, null, [], 'now', 'Buy milk now'],
+      'Escape backs out of the toolbar only: still editing, selection kept, nothing applied');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
