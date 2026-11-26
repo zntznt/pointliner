@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2222 declarations in 158 sections across 17 domains.**
+**2223 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -290,6 +290,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `repeatOf` — This point's `repeat` phrase (the reserved property's value), or null.
 - `nodePropVars` — The point's OWN numeric properties as a { name: number } overlay, so a bare name
 - `resolveNodeScope` — The merged { name: number } variable scope visible AT a node — the ONE place the two
+- `_evalCheckActive` — Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
 - `evalCheck` — Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 
 ## custom calendars (#527, Tier 1)

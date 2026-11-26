@@ -5786,6 +5786,10 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
   return out;
 }
 
+// Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
+// document), here("is:passing")) reaches its own host again; without this it recursed to a RangeError.
+const _evalCheckActive = new Set();
+
 // Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 //   null  → the point has no check.
 //   pass  → the assertion evaluated to a truthy number (1).
@@ -5798,26 +5802,30 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
 function evalCheck(node, vars = {}, ancestors = []) {
   const raw = checkExprOf(node);
   if (!raw) return null;
-  // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
-  // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
-  // reporting 'pass' just because the number is truthy is a silent wrong-success
-  // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
-  if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
-  if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
-  // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
-  // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
-  // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
-  // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
-  // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
-  // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
-  if (firstEmptyRollup(raw, node)) return 'error';
-  const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
-  // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
-  // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
-  const scope = resolveNodeScope(node, ancestors, vars);
-  const res = evalMath(expanded, scope);
-  if (res === null) return 'error';
-  return res ? 'pass' : 'fail';
+  if (_evalCheckActive.has(node)) return 'error';   // re-entered: its verdict depends on itself
+  _evalCheckActive.add(node);
+  try {
+    // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
+    // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
+    // reporting 'pass' just because the number is truthy is a silent wrong-success
+    // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
+    if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
+    if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
+    // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
+    // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
+    // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
+    // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
+    // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
+    // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
+    if (firstEmptyRollup(raw, node)) return 'error';
+    const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
+    // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
+    // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
+    const scope = resolveNodeScope(node, ancestors, vars);
+    const res = evalMath(expanded, scope);
+    if (res === null) return 'error';
+    return res ? 'pass' : 'fail';
+  } finally { _evalCheckActive.delete(node); }
 }
 
 // ─── dates: start + due ────────────────────────────────────────────────────────
@@ -31383,14 +31391,20 @@ function evalMath(input, vars = {}) {
   // Comparison: returns 1 (true) or 0 (false). Only one comparison per cmp()
   // call — chaining (a < b < c) is not supported; use ternary for that.
   function cmp() {
-    const left = addSub();
+    let left = addSub();
     const ch = peek();
     let op = '';
     if ((ch === '>' || ch === '<') ) { op = eat(); if (peek() === '=') op += eat(); }
     else if (ch === '=' && s[pos + 1] === '=') { op = eat() + eat(); }
     else if (ch === '!' && s[pos + 1] === '=') { op = eat() + eat(); }
     if (!op) return left;
-    const right = addSub();
+    let right = addSub();
+    // A NaN side is no verdict (→ the final isNaN gate → null), as and()/or() propagate it.
+    if (isNaN(left) || isNaN(right)) return NaN;
+    // Compare what the pill shows: formatMathResult prints at most 10 s.f., so snap non-integers to 12
+    // (never fewer than their integer digits) to wash out float dust; integers and ±Infinity stay exact.
+    const snap = x => Number.isInteger(x) || !isFinite(x) ? x : parseFloat(x.toPrecision(Math.max(12, Math.ceil(Math.log10(Math.abs(x))))));
+    left = snap(left); right = snap(right);
     if (op === '>')  return left > right  ? 1 : 0;
     if (op === '>=') return left >= right ? 1 : 0;
     if (op === '<')  return left < right  ? 1 : 0;

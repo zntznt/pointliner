@@ -104,7 +104,8 @@ When the answer you want is a **word**, use the conditional brace instead, `{hp 
 which is on the generate side and takes text on both branches (see
 [Say different things in different cases](generating-text.md#say-different-things-in-different-cases-conditionals)).
 
-Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
+Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic. They compare the
+numbers you see, so `0.1 + 0.2 == 0.3` holds, and a side that cannot be computed (`0 / 0`) is an error, not a `0`.
 
 **Logic:** combine comparisons with `and(…)` / `or(…)` (two or more args, like `min`/`max`) and
 flip one with `not(x)`. Nonzero counts as true; the result is `1`/`0`, so logic nests anywhere a

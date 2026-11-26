@@ -689,6 +689,40 @@ test('evalMath — comparisons and ternary return 0/1', () => {
   assert.equal(c.evalMath('1!=2'), 1);
 });
 
+// A comparison must agree with what the pill displays: formatMathResult shows at most 10 significant
+// figures, so float dust (3.3000000000000003) must not fail `sum(cost) <= budget` on a pill reading 3.3.
+test('evalMath — comparisons snap float dust the display hides, and NaN is cannot-evaluate', () => {
+  assert.equal(c.evalMath('0.1+0.2==0.3'), 1);
+  assert.equal(c.evalMath('1.1+2.2<=3.3'), 1);
+  assert.equal(c.evalMath('1.1+2.2>3.3'), 0);
+  assert.equal(c.evalMath('0.1*3!=0.3'), 0);
+  assert.equal(c.evalMath('1.00000001 > 1'), 1, 'a difference the display shows (8 s.f.) still compares');
+  assert.equal(c.evalMath('1.000000001 > 1'), 1, 'and one at 10 s.f.');
+  // snapping is relative, never absolute: a tiny real value is not zero
+  assert.equal(c.evalMath('1e-13 == 0'), 0);
+  assert.equal(c.evalMath('6.674e-11 > 0'), 1);
+  // integers compare exactly, at every size
+  assert.equal(c.evalMath('123456789012345 == 123456789012346'), 0);
+  assert.equal(c.evalMath('123456789012345.5 == 123456789012000'), 0, 'a large non-integer keeps its integer digits');
+  assert.equal(c.evalMath('9007199254740993 == 9007199254740992'), 1, 'beyond 2^53: the same double, as before');
+  assert.equal(c.evalMath('1e300 > 1e299'), 1);
+  // Infinity and negative zero are unchanged
+  assert.equal(c.evalMath('1/0 == 1/0'), 1);
+  assert.equal(c.evalMath('1/0 > 1e308'), 1);
+  assert.equal(c.evalMath('-1/0 < -1e308'), 1);
+  assert.equal(c.evalMath('-0 == 0'), 1);
+  assert.equal(c.evalMath('-1/(1/0) >= 0'), 1);
+  // NaN on either side is not a verdict, matching and()/or() (#539)
+  assert.equal(c.evalMath('0/0 != 1'), null);
+  assert.equal(c.evalMath('0/0 >= 0.5'), null);
+  assert.equal(c.evalMath('1 < sqrt(-1)'), null);
+  const ck = (expr, props, kids = []) => c.evalCheck({ text: 'p', children: kids.map(k => ({ text: 'k', children: [], props: [{ key: 'cost', val: k }] })),
+    props: [...Object.entries(props).map(([key, val]) => ({ key, val })), { key: 'check', val: expr }] }, {});
+  assert.equal(ck('sum(cost) <= budget', { budget: '3.30' }, ['1.10', '2.20']), 'pass');
+  assert.equal(ck('done / planned != 1', { done: '0', planned: '0' }), 'error');
+  assert.equal(ck('done / planned >= 0.5', { done: '0', planned: '0' }), 'error');
+});
+
 test('evalMath — division by zero: Infinity is valid, NaN is null', () => {
   assert.equal(c.evalMath('1/0'), Infinity);
   assert.equal(c.evalMath('0/0'), null);
@@ -18450,6 +18484,32 @@ test('evalCheck: count / avg aggregations and own-prop assertions', () => {
   assert.equal(c.evalCheck(mkCheckNode('avg(cost) <= 10', {}, [5, 15]), {}), 'pass');   // avg 10
   assert.equal(c.evalCheck(mkCheckNode('hours <= 8', { hours: 6 }), {}), 'pass');       // own prop
   assert.equal(c.evalCheck(mkCheckNode('hours <= 8', { hours: 9 }), {}), 'fail');
+});
+
+// A check that searches for checks (is:failing / is:passing) evaluates its own host again; before the
+// re-entry guard that recursed until RangeError, on the render path (buildCheckChip has no catch).
+test('evalCheck: a check that queries checks re-entering its own host answers, never overflows', () => {
+  const n = (id, text, props = {}, children = []) => ({ id, text, seq: [], children,
+    props: Object.entries(props).map(([key, v]) => ({ key, val: String(v) })) });
+  const withRoot = (r, fn) => {
+    c._context.__chkRoot = r;
+    vm.runInContext('root = __chkRoot; resetDocCaches();', c._context);
+    try { return fn(); } finally { vm.runInContext('root = mkRoot(); resetDocCaches();', c._context); }
+  };
+  const self = n('h1', 'host', { check: 'count("is:failing", document) == 0' });
+  withRoot(n('r', '', {}, [self]), () => {
+    // the host sees itself mid-evaluation as 'error' (cannot evaluate), so it counts as one failing point
+    assert.equal(c.evalCheck(self, {}), 'fail');
+    assert.equal(c.queryMatchesNode(c.parseSearchQuery('is:failing'), self), true);
+    assert.equal(c.evalCheck(self, {}), 'fail', 'the guard set is cleaned up: a second call gives the same verdict');
+  });
+  const here = n('h2', 'host', { check: 'here("is:passing") == 1' });
+  withRoot(n('r', '', {}, [here]), () => assert.equal(c.evalCheck(here, {}), 'fail'));
+  // not self-referential: the counted points are plain checks, so the count is exact
+  const kids = [n('b', 'bad', { x: 5, check: 'x < 1' }), n('g', 'good', { x: 0, check: 'x < 1' }), n('e', 'bare', { check: 'x' })];
+  const host = n('h3', 'host', {}, kids);
+  withRoot(n('r', '', {}, [host]), () =>
+    assert.equal(c.evalMath(c.expandAggExpr('count("is:failing", document)', host, {}), {}), 2, 'a fail and an error count, a pass does not'));
 });
 
 test('evalCheck: null when no check, error when malformed or unresolvable', () => {
