@@ -122,8 +122,28 @@ When you make a base, the caret starts in the **first header cell** with its pla
 naming your columns is the first thing you do: type a name, `Tab` to the next header, then arrow down
 into the rows.
 
-Static tables can also carry a spreadsheet formula line; see
-[table formulas](computing-numbers.md#table-formulas-briefly).
+Static tables can also carry a spreadsheet formula line, and a base can total and compute its own
+columns; see [formulas and totals in a base](#formulas-and-totals-in-a-base).
+
+### Tables and bases: which one?
+
+Pointliner has one table syntax and three ways to power it up, and it helps to know which one you
+want.
+
+- A **typed table** (`|` pipe rows in any point) is for display: it renders formatted, but you edit
+  it as text.
+- A **base** (`/base`) is the interactive kind: click into cells, add formulas, add **Calculate**
+  footers and switch views (Table, Board, Cards, Calendar).
+- A **query base** (`/querybase`) is a base whose rows are a live search over your document: always
+  current, read-only. See [query bases](getting-around.md#query-bases).
+- Any base can also declare its rows as **variables** (the bullet menu's **Use rows as variables**): a
+  stat block whose cells you read as `{Orc.HP}` in text, math and dice. See
+  [variable bases](computing-numbers.md#variable-bases-a-table-of-variables).
+
+Rule of thumb: prose with a small table in it, type pipes. Data you keep and edit, `/base`. A live
+report over your points, `/querybase`. Numbers your pills should read, turn on variables. You can
+move between the first two at any time: the bullet menu's **Convert table to base** makes a typed
+table interactive, and a base's **Convert to text** turns it back into a plain pipe table.
 
 Base cells take **pills** the same way a point does: type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}`
 in a cell and it becomes the live pill when you leave the cell (the cell's `@` menu builds a dice
@@ -222,6 +242,64 @@ Deleting a column or row stays in the column menu (open it with `Shift+F10` on a
 keystroke never destroys data. That same cell menu also lists the focused cell's **pill actions**:
 a cell holding a `{2d6}` pill shows Re-roll, Edit and Freeze rows there, since a focused cell shows
 the `{…}` source with nothing to click.
+
+### Formulas and totals in a base
+
+Total a cost column, multiply a quantity by a unit price all the way down or put a grand total under
+the table.
+
+**Calculate adds a total row.** Click the arrow on a column's header to open its menu, or press
+`Shift+F10` on one of its cells, then pick **Calculate** for **Sum**, **Average**, **Count**, **Min**
+or **Max**. A footer row appears with the total, labeled with the kind you picked, and it keeps
+itself current as you edit the cells; **Calculate** then **None** takes it away again.
+
+**Formulas fill cells for you.** The same menu's formula rows go further. A **Column formula** fills
+every data row of that column from one recipe, and a **Cell formula** does a single cell and wins
+over the column's, so one hand-set answer can sit inside a computed column. **Cell formula** is
+listed only when you opened the menu on a cell rather than the header, and either dialog asks for
+the expression alone, since the target is already the column or cell you opened it on.
+
+A cell a formula targets becomes computed: it shows the answer, refreshes itself and no longer takes
+typing. Aim one at a column you want the app to fill rather than one you have already written in.
+A spreadsheet-style `=$1*$2` typed straight into a cell is only text.
+
+Both Calculate and formulas are for a base you author: a query base's rows come from your points, so
+it has no column menu of its own.
+
+**The recipe lives under the table.** Every formula is kept on a `#+TBLFM:` line under the table,
+hidden when the base renders. The bullet menu's **Edit as Markdown** opens the base as its pipe text,
+recipe line included, when you want to write or read several formulas at once, and **Copy with
+formulas** copies the table plus its recipe line to paste into another base.
+
+Formulas point at cells the way a spreadsheet does:
+
+| You write | It means |
+|---|---|
+| `$3` | the third column of the row being computed |
+| `@2$3` | one exact cell (row 1 is the header, so `@2` is the first data row) |
+| `@-1` | the row above the one being computed |
+| `@>` | the last row |
+| `@2$1..@>$3` | a range, to feed `vsum`, `vmean`, `vmax`, `vmin`, `vcount` or `vmedian` |
+
+```
+$3=$1*$2
+@4$2=@2$2+@3$2
+@>$2=vsum(@2$2..@-1$2)
+```
+
+The first is a column formula (quantity times unit price, every row), the second a cell formula
+(one cell, from two others) and the third the shape **Calculate** writes: total the data rows into
+the footer. A total you write by hand should end at `@-1` rather than `@>`, since a Calculate footer
+is itself the last row. Everything else is the same math the rest of the app speaks, so units,
+dates, functions and variables all work inside a formula (see [Computing numbers](computing-numbers.md)).
+
+**A formula that cannot be worked out says why**, in the cell, instead of a number:
+
+- `#ERR (loops on itself)`: the cell ends up feeding itself, which is what a hand-written total whose
+  range reaches `@>` does.
+- `#ERR (another cell)`: the cell is built on one that already failed, so fixing the first brings the
+  rest back.
+- `#ERR (bad ref)`: the formula names something the document does not carry.
 
 ## Footnotes, links and images
 

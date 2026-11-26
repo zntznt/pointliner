@@ -728,8 +728,9 @@ A Markdown table can carry a spreadsheet-style formula line, Org-mode style:
 ```
 
 The `#+TBLFM:` line computes the column and is hidden in the rendered table. For richer
-spreadsheet-like grids, the **`/base`** command makes an interactive base. (Tables are a deeper
-topic; this is just the pointer.)
+spreadsheet-like grids, the **`/base`** command makes an interactive base, with a **Calculate** total
+row and column and cell formulas from each column's menu; see
+[formulas and totals in a base](writing-and-formatting.md#formulas-and-totals-in-a-base).
 
 ---
 
