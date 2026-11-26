@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2210 declarations in 158 sections across 17 domains.**
+**2213 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -190,7 +190,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## subtree aggregation: sum / avg / count over a child PROPERTY
 
 - `propExprValue` — A math pill may aggregate a named property over the point's DIRECT children —
-- `propScalar` — A non-formula property value as a number: plain, thousands-grouped, or a date (epoch-day). null otherwise.
+- `parseDuration` — #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
+- `formatDuration` — The display half: decimal hours as h:mm, with :ss only when the value has seconds once rounded to
+- `rollupFmt` — #1666: the format a rollup pill SHOWS. A bare sum/avg/min/max over a column whose every value is
+- `propScalar` — A non-formula property value as a number: plain, thousands-grouped, an h:mm duration (hours) or a
 - `rowPropVars` — #1656 (the #1317 follow-up): the row's own properties as formula variables, so `cost: gal * ppg`
 - `childPropNumber`
 - `aggHasSkippedValues` — #809: does an aggregated property in `expr` skip a child's NON-EMPTY, non-numeric value?

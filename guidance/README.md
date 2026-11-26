@@ -133,6 +133,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `variable-kind-unification-plan.md` | SHIPPED (2026-08) — measured plan for #1353; the kind-wall is narrower than filed and the reasons already exist |
 | `single-file-reassurance-proposal.md` | SHIPPED (2026-08) — the single-file anxiety (fear of loss + scaling legibility); #1268 |
 | `snippet-palette-proposal.md` | SHIPPED (2026-08) — a palette for USING `{…}` at speed, where guided authoring solved authoring it; #1267 |
+| `duration-proposal.md` | SHIPPED (2026-11): h:mm property values read as decimal hours, an h:mm display format, the three product calls with the standard behind each; #1666 |
 
 **Ledgers & references:**
 

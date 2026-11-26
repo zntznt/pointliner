@@ -14023,6 +14023,13 @@ const GUIDE_VALUE_CLAIMS = {
   '{= STR + 2}':            { shows: '16', vars: { str: 14 }, declares: 'give a point a `STR: 14` property' },
   // #1656: a row formula reads its own row; the inputs are the two props the same sentence hands the reader.
   '{prop cost: gal * ppg}': { shows: '400', vars: { gal: 100, ppg: 4 }, declares: 'with `{prop gal: 100}` and `{prop ppg: 4}`' },
+  // #1666: the 1.25 is what the VALUE 1:15 is read as. The probes take t from the real parser, so a
+  // parseDuration that read minutes (75) or dropped the duration (null) turns this red.
+  '{prop t: 1:15}': {
+    gloss: '1.25 is the hours the property value 1:15 is read as, not the output of a formula',
+    states: ['It counts as 1.25 hours'],
+    vars: { t: c.parseDuration('1:15') },
+    probes: [['t', '1.25'], ['t * 60', '75']] },
   '{= roundto(x, 5)}': {
     gloss: '5, 25 and 0.5 are step sizes offered, not the pill\'s output',
     states: ['nearest 5, 25 or 0.5'],
@@ -31271,8 +31278,8 @@ test('#1115 the format reaches the pill AND the export, not just the pill', () =
   // rather than loosened: the point of the pin is that the dialog uses the ONE shared parser, so it
   // must still name the exact call, and it must name the new argument or a dropped 4th arg would
   // silently stop the estimate dialog honouring a field its own form offers.
-  assert.match(_src, /if \(rec\) \{ const f = parseNumFmt\(v\.decimals, v\.prefix, v\.suffix, v\.sigfigs\); if \(f\) rec\.fmt = f; \}/,
-    'the dialog writes it with the SHARED parser, lean-or-absent, and passes sigfigs');
+  assert.match(_src, /if \(rec\) \{ const f = parseNumFmt\(v\.decimals, v\.prefix, v\.suffix, v\.sigfigs, v\.time\); if \(f\) rec\.fmt = f; \}/,
+    'the dialog writes it with the SHARED parser, lean-or-absent, and passes sigfigs and the h:mm box (#1666)');
 });
 
 test('#1115 searching the catalogue for "format" finds the pills that own one', () => {
@@ -31915,6 +31922,98 @@ test('#1656 every row-formula reader passes the row, not an empty scope', () => 
   assert.deepEqual(bare.map(m => m[0]), ['propExprValue(x)'], 'only inferPropType (values only, already frozen) may omit the row');
 });
 
+// ── #1666: h:mm durations are numbers (decimal hours) and show back as h:mm ─────────────────────────
+// Panel #8: a stage manager's `{prop t: 1:15}` was "not a number" to every rollup, so sum(t) read
+// `0 2 not counted`, and a total could only be shown as 0.7500 hr. guidance/duration-proposal.md has
+// the standards: h:mm as every spreadsheet and hours-of-service log reads it, stored as hours.
+test('#1666 parseDuration reads h:mm and h:mm:ss as hours, and nothing else', () => {
+  assert.equal(c.parseDuration('1:15'), 1.25, '1 h 15 min');
+  assert.equal(c.parseDuration(' 8:45 '), 8.75, "a log's 8:45 is 8.75, trimmed");
+  assert.equal(c.parseDuration('0:01:30'), 1.5 / 60, 'h:mm:ss');
+  assert.equal(c.parseDuration('100:30'), 100.5, 'hours run past 24, as [h]:mm does');
+  assert.equal(c.parseDuration('-1:30'), -1.5, 'a sign applies to the whole duration');
+  for (const bad of ['1:75', '1:5', '1:15:7', ':15', '1:', '1.5', '15', '1:15 pm', '2026-11-20', '', null, 'a:bc'])
+    assert.equal(c.parseDuration(bad), null, `${JSON.stringify(bad)} is not a duration`);
+});
+
+test('#1666 formatDuration balances to h:mm, adding :ss only when there are seconds', () => {
+  assert.equal(c.formatDuration(1.25 + 50 / 60), '2:05', '1:15 + 0:50 is 2:05, never 2:04:59');
+  assert.equal(c.formatDuration(0.75), '0:45', 'the panel 0.7500 hr');
+  assert.equal(c.formatDuration(21.216667), '21:13', 'the panel curtain-down 21.216667');
+  assert.equal(c.formatDuration(1.5 / 60), '0:01:30', 'seconds survive the round trip');
+  assert.equal(c.formatDuration(-1.5), '-1:30');
+  assert.equal(c.formatDuration(1e-9), '0:00', 'no negative zero, no float noise');
+  assert.equal(c.formatDuration(125), '125:00', 'hours are not capped at 24');
+  for (const t of ['1:15', '0:50', '11:15', '0:00:59', '99:59:59']) assert.equal(c.formatDuration(c.parseDuration(t)), t, `${t} round-trips`);
+});
+
+test('#1666 the repro: sum(t) over 1:15 and 0:50 totals 2.0833 hours and shows 2:05', () => {
+  const row = (title, t) => { const n = c.mkNode(title); n.props = [{ key: 't', val: t }]; return n; };
+  const run = c.mkNode('## Run'); run.children.push(row('S1', '1:15'), row('S2', '0:50'));
+  assert.equal(c.childPropNumber(run.children[0], 't'), 1.25, 'the rollup reader reads the duration');
+  const total = c.evalMath(c.expandAggExpr('sum(t)', run, {}), {});
+  assert.ok(Math.abs(total - 125 / 60) < 1e-12, `sum is 125 minutes in hours, got ${total}`);
+  assert.equal(c.aggHasSkippedValues(run, 'sum(t)'), false, 'nothing is "not counted" any more');
+  assert.equal(c.formatMathDisplay(total, 'sum(t)', c.rollupFmt(run, 'sum(t)', null)), '2:05', 'and the total inherits h:mm');
+  assert.equal(c.formatMathDisplay(total, 'sum(t)', c.rollupFmt(run, 'sum(t)', { decimals: 2 })), '2.08', "the pill's own format wins");
+  assert.equal(c.formatMathDisplay(total, 'sum(t)', c.rollupFmt(run, 'sum(t)', { time: false })), '2.0833333', 'and so does an unticked box');
+  // the inheritance is narrow: a tally, a mixed column and a compound formula keep the number display
+  assert.equal(c.rollupFmt(run, 'count(t)', null), null, 'count is a tally, not a duration');
+  assert.equal(c.rollupFmt(run, 'sum(t) * 40', null), null, 'a compound formula is not inferred');
+  const mixed = c.mkNode('## Mixed'); mixed.children.push(row('A', '1:15'), row('B', '2'));
+  assert.equal(c.rollupFmt(mixed, 'sum(t)', null), null, 'one plain number and the column is not all durations');
+  assert.equal(c.childPropNumber(mixed.children[1], 't') + c.childPropNumber(mixed.children[0], 't'), 3.25, 'but 2 and 1:15 still add as hours');
+  assert.equal(c.rollupFmt(c.mkNode('Empty'), 'sum(t)', null), null, 'an empty column inherits nothing');
+  const deep = c.mkNode('## Show'); const act = row('Act 1', ''); act.props = []; act.children.push(row('S1', '0:40')); deep.children.push(act);
+  assert.deepEqual(host(c.rollupFmt(deep, 'sum(t, subtree)', null)), { time: true }, 'the scope argument is read, as auditAgg reads it');
+});
+
+test('#1666 a duration is a number to a check, the + Total door and the tip', () => {
+  const day = c.mkNode('Tue'); day.props = [{ key: 'drive', val: '11:15' }, { key: 'check', val: 'drive <= 11' }];
+  assert.equal(c.nodePropVars(day).drive, 11.25, 'own-point scope reads hours');
+  assert.equal(c.evalCheck(day, {}), 'fail', 'so the 11-hour rule fails on an 11:15 day');
+  const due = c.mkNode('D'); due.props = [{ key: 'due', val: '1:15' }];
+  assert.equal(c.nodePropVars(due).due, undefined, 'a date key is never read as a duration');
+  assert.equal(c.inferPropType(['1:15', '0:50']), 'number', 'a duration column is a number column');
+  assert.equal(c.inferPropType(['1:15', 'soon']), 'text');
+});
+
+test('#1666 the h:mm format rides the shared number-format record', () => {
+  assert.deepEqual(host(c.parseNumFmt('', '', '', '', true)), { time: true }, 'the box on gives a lean record');
+  assert.deepEqual(host(c.parseNumFmt('', '', '', '', 'true')), { time: true }, 'a checkbox seed string too');
+  assert.equal(c.parseNumFmt('', '', '', '', false), null, 'the box off adds nothing');
+  assert.equal(c.formatNumDisplay(2.5, { time: true, suffix: ' run' }), '2:30 run', 'affixes still apply');
+  assert.equal(c.formatNumDisplay(2.5, { time: true, decimals: 2 }), '2:30', 'h:mm is a shape, so it wins over decimals');
+  assert.equal(c.formatMathDisplay(0.75, 'convert(45, min, hr)', { time: true }), '0:45', 'the panel convert reads 0:45');
+  assert.equal(c.estNumFmt(1.5, { time: true }), '1:30', 'the estimate family honours it too');
+});
+
+test('#1666 h:mm inside a formula stays text, says why, and never touches the ternary', () => {
+  assert.equal(c.evalMath('1:15 + 0:50', {}), null, 'not a formula literal (P5)');
+  assert.equal(c.evalMath('c ? 1 : 30', { c: 1 }), 1, 'a spaced ternary is unchanged');
+  assert.equal(c.evalMath('c?1:30', { c: 0 }), 30, 'and so is a tight one, which is the same string to evalMath');
+  assert.equal(c.mathErrorReason('1:15 + 0:50', {}), 'duration');
+  assert.match(c.mathReasonPhrase('duration', '1:15 + 0:50'), /\{prop t: 1:15\}/, 'the remedy names the property door');
+  assert.notEqual(c.mathErrorReason('x ? 1:30', {}), 'duration', 'a broken ternary is never blamed on a duration');
+});
+
+test('#1666 census: every property-number reader takes a duration, the write-back one does not', () => {
+  // the read-only family: each converts a property VALUE to a number for display, totals or checks
+  for (const [fn, needle] of [['propScalar', 'parseDuration(raw)'], ['nodePropVars', 'parseDuration(p.val)'],
+                              ['inferPropType', 'parseDuration(x)'], ['nudgeSumKey', 'parseDuration(p.val)']])
+    assert.ok(fnBody(NC, fn).includes(needle), `${fn} reads h:mm`);
+  // the measured negative: the stat adjuster WRITES the number back, which would replace a typed 2:15 with 2.25
+  assert.ok(!fnBody(NC, 'resolveStatTarget').includes('parseDuration'), 'a duration is deliberately not a stat');
+  // every display of a rollup pill's value goes through rollupFmt, so no surface shows 2.0833333 beside a 2:05
+  const sites = nonEmpty([...NC.matchAll(/formatMathDisplay\((?:fresh|a\.result|v), (?:m\.expr|src), ([^)]*\)?)\)/g)].map(m => m[1]), 'rollup display sites');
+  assert.deepEqual(sites.filter(a => !/^(rollupFmt\(|shown$)/.test(a)), [], 'every pill/export/Explain/query display inherits h:mm');
+  assert.ok(fnBody(NC, 'openPillAudit').includes('const shown = rollupFmt(node, m.expr, m.fmt)'), 'Explain computes it once');
+  // every dialog that writes the shared record passes the box
+  const calls = nonEmpty([...NC.matchAll(/parseNumFmt\(([^()]*)\)/g)].map(m => m[1]).filter(a => /\.sigfigs/.test(a)), 'parseNumFmt calls');
+  assert.deepEqual(calls.filter(a => !/\.time$/.test(a)), [], 'no dialog drops the h:mm box');
+  assert.equal(calls.length, 6, 'three dialogs, a preview and a save each');
+});
+
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {
   const p = c.mkNode('Budget');
   const kid = (val) => { const n = c.mkNode('item'); n.props = [{ key: 'cost', val }]; return n; };
@@ -32215,7 +32314,7 @@ test('#946 parseNumFmt — a lean fmt or null; decimals bounded 0-20', () => {
   // formatMathResult (the PERSISTED value) must NEVER group — a grouped cell would stop re-parsing
   assert.equal(c.formatMathResult(840000), '840000', 'the canonical value formatter stays separator-free');
   // the display sinks use the display formatter: renderMathPill + the number cell + formatVarValue
-  assert.ok(/const display = formatMathDisplay\(fresh, m\.expr, m\.fmt\)/.test(_src), 'renderMathPill groups + honors the per-pill format');
+  assert.ok(/const display = formatMathDisplay\(fresh, m\.expr, rollupFmt\(cookieNode, m\.expr, m\.fmt\)\)/.test(_src), 'renderMathPill groups + honors the per-pill format');
   assert.ok(/return escHtml\(formatNumDisplay\(n, node\.colFmt\?\.\[c\]\)\)/.test(_src), 'a base number cell groups + honors the per-column format (ε, display only)');
   assert.ok(/function formatVarValue\(v\) \{ return typeof v === 'string' \? v : formatNumDisplay\(v\); \}/.test(_src), 'variable values group too');
 });
@@ -35085,9 +35184,9 @@ test('#1178 the runner refreshes EVERY preview on ANY field, exactly once', () =
   assert.ok(/_previewFns\.push\(updatePrev\);/.test(body) && /^\s*updatePrev\(\);/m.test(body),
     'each preview still registers itself and still renders once on open');
   // Exactly three dialogs depend on this, so name them: each has ONE preview that reads `all`.
-  for (const [dlg, needle] of [['openEstimateDialog', /parseNumFmt\(all\?\.decimals, all\?\.prefix, all\?\.suffix, all\?\.sigfigs\)/],
+  for (const [dlg, needle] of [['openEstimateDialog', /parseNumFmt\(all\?\.decimals, all\?\.prefix, all\?\.suffix, all\?\.sigfigs, all\?\.time\)/],
                                ['openMathDialog', /const f = fmtOf\(all\);/],
-                               ['openColFmtDialog', /parseNumFmt\(all\.decimals, all\.prefix, all\.suffix, all\.sigfigs\)/]]) {
+                               ['openColFmtDialog', /parseNumFmt\(all\.decimals, all\.prefix, all\.suffix, all\.sigfigs, all\.time\)/]]) {
     // Comment-stripped, for the same reason previewCallbacks now strips: this change's own comment
     // quotes `{ preview: true }` and was counted as a third declaration.
     const d = fnBody(NC, dlg);
@@ -36934,8 +37033,8 @@ test('#983 the display branch: convert rounds, everything else is untouched', ()
   // #1175: the escape now yields to an explicit sigfigs as well, for the SAME stated reason — that is
   // also the author stating a precision. Both must be named: dropping either one silently returns a
   // lab notebook to the 4-s.f. default it explicitly overrode.
-  assert.ok(/isConvertExpr\(expr\) && !\(fmt && \(Number\.isInteger\(fmt\.decimals\) \|\| Number\.isInteger\(fmt\.sigfigs\)\)\)/.test(fmd),
-    'an explicit per-pill decimals OR sigfigs wins — that is the user stating a precision');
+  assert.ok(/isConvertExpr\(expr\) && !\(fmt && \(Number\.isInteger\(fmt\.decimals\) \|\| Number\.isInteger\(fmt\.sigfigs\) \|\| fmt\.time\)\)/.test(fmd),
+    'an explicit per-pill decimals OR sigfigs OR h:mm (#1666) wins: that is the user stating a display');
   assert.ok(/\(fmt\?\.prefix \|\| ''\) \+ groupThousands\(formatConvertResult\(v\)\) \+ \(fmt\?\.suffix \|\| ''\)/.test(fmd),
     'a fmt carrying only affixes still gets the default, and keeps its affixes');
   assert.ok(/: formatNumDisplay\(v, fmt\);/.test(fmd), 'every other expression falls through unchanged');
