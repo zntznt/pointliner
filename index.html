@@ -7697,19 +7697,52 @@ function collectVars(rootNode) {
 // points in the document (the deliberate model change recorded in
 // guidance/typed-var-declaration-proposal.md §9 / generation-direction.md §2).
 //
-// Built per call (cheap: one short-circuited tree walk + the shared resolver) and cached by
-// node id on _varsVer, so repeated render reads of the same node don't re-walk. Pack vars
-// (plugin formula vars) are global and always precede document declarations, as before.
-let _varMapAtCacheVer = -1, _varMapAtCache = new Map(); // doc-cache: varMapAt (per-node; see DOC_CACHES)
-regDocCache('varMapAt', {});
+// The map at a node depends only on HOW MANY declaring points precede it (its own included), so
+// varDeclIndex walks the document once per _varsVer generation and the resolved maps are cached by
+// that count: every row between two declarations shares one map, and a document that declares
+// nothing resolves once. (A walk per node is O(position), and one edit reads hundreds of nodes, the
+// window's rows plus the backlinks scan's pill-bearing points: guidance/performance.md, "varMapAt".)
+// Shared across rows, so a returned map is read-only (resolveNodeScope copies; nothing writes one).
+// Pack vars (plugin formula vars) are global and always precede document declarations, as before.
+let _varDeclIdxVer = -1, _varDeclIdx = null; // doc-cache: varMapAt (one walk per generation; see DOC_CACHES)
+regDocCache('varMapAt', { read: () => varDeclIndex() });
 function varMapAt(targetNode) {
   if (!targetNode) return collectVars();                 // no anchor → global map (back-compat)
-  if (_varMapAtCacheVer !== _varsVer) { _varMapAtCache = new Map(); _varMapAtCacheVer = _varsVer; }
-  const id = targetNode.id;
-  if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
-
+  const idx = varDeclIndex(targetNode);
+  // own declarations count ({a:=5}{a} in one point resolves); a point outside the tree sees them all
+  const k = idx.at.get(targetNode)?.[1] ?? idx.steps.length;
+  let resolved = idx.maps.get(k);
+  if (resolved) return resolved;
+  const s = varDeclState(idx, k);
+  resolved = attachVarDists(resolveVarDefs(s.defs, s.pickVals, s.order, s.propScopes).resolved, s.dists);
+  idx.maps.set(k, resolved);
+  return resolved;
+}
+// One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
+// at(node) = [declaring points strictly before node, ... at or before it]. Rebuilt on a new
+// generation, a new root, or a target the walk never met (a point added before the bump).
+function varDeclIndex(target) {
+  if (_varDeclIdxVer !== _varsVer || _varDeclIdx.root !== root || (target && !_varDeclIdx.at.has(target))) {
+    const steps = [], at = new Map(), anc = [];   // anc: #1657, nearest-first
+    (function walk(node) {
+      if (!node) return;
+      const mine = [], before = steps.length;
+      collectNodeDecls(node, (...a) => mine.push(a), anc);
+      if (mine.length) steps.push(mine);
+      at.set(node, [before, steps.length]);
+      if (node !== root) anc.unshift(node);
+      for (const c of node.children || []) walk(c);
+      if (node !== root) anc.shift();
+    })(root);
+    _varDeclIdx = { root, steps, at, maps: new Map() }; _varDeclIdxVer = _varsVer;
+  }
+  return _varDeclIdx;
+}
+// The accumulator after pack vars and the first k declaring points: what both positional readers
+// resolve from (renderPosVarMaps keeps adding the point's own declarations token by token).
+function varDeclState(idx, k) {
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const propScopes = Object.create(null), anc = [];   // #1657
+  const propScopes = Object.create(null);
   const add = (nm, expr, pick, dist, ps) => {
     if (!(nm in defs)) order.push(nm);
     defs[nm] = expr;
@@ -7720,29 +7753,8 @@ function varMapAt(targetNode) {
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
   for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
-
-  // Depth-first walk; collect declarations until we REACH targetNode, then stop. A reference
-  // sees declarations in nodes before it, plus declarations earlier in its own node's text.
-  let done = false;
-  (function walk(node) {
-    if (done || !node) return;
-    if (node === targetNode) {
-      // include declarations that appear in targetNode's own text BEFORE this point is moot
-      // for a whole-node read; include the node's own typed declarations so {a:=5}{a} in one
-      // node resolves, then stop (nothing after the target is visible).
-      collectNodeDecls(node, add, anc);
-      done = true; return;
-    }
-    collectNodeDecls(node, add, anc);
-    if (node !== root) anc.unshift(node);
-    for (const c of node.children || []) { walk(c); if (done) return; }
-    if (node !== root) anc.shift();
-  })(root);
-
-  const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
-  attachVarDists(resolved, dists);
-  if (id != null) _varMapAtCache.set(id, resolved);
-  return resolved;
+  for (let i = 0; i < k; i++) for (const a of idx.steps[i]) add(...a);
+  return { defs, pickVals, dists, order, propScopes, add };
 }
 
 // Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
@@ -7780,12 +7792,9 @@ function renderPosVarMaps(node) {
   if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
-  const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const propScopes = Object.create(null), anc = [];   // #1657: props at each declaring point
-  const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
-  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
-  let done = false;    // gather declarations from every point ABOVE this one (document order)
-  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+  // every declaration from the points ABOVE this one (document order), from the shared index
+  const idx = varDeclIndex(node);
+  const { defs, pickVals, dists, order, propScopes, add } = varDeclState(idx, idx.at.get(node)?.[0] ?? idx.steps.length);
   const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let m;
@@ -12208,7 +12217,7 @@ function varBaseDefs(node) {
   return out;
 }
 // Memo: the parse + classify pass must not run once per varMapAt call (collectVars
-// rebuilds every markDirty). Ver-guarded per-node Map, the _varMapAtCache precedent —
+// rebuilds every markDirty). Ver-guarded per-node Map, the _posVarMapCache precedent —
 // NOT a tenth collector (self-invalidating; see the resetDocCaches doc-comment).
 let _varBaseDefsCacheVer = -1, _varBaseDefsCache = new Map(); // doc-cache: varBaseDefs (per-node; see DOC_CACHES)
 regDocCache('varBaseDefs', {});

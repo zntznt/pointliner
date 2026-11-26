@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2228 declarations in 158 sections across 17 domains.**
+**2230 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -406,8 +406,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `orphanedVarRefCount`
 - `freezeOrphanNote` — #1146: the sentence appended to the freeze's own confirmation. Empty when nothing broke, so
 - `collectVars`
-- `_varMapAtCacheVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
+- `_varDeclIdxVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
 - `varMapAt`
+- `varDeclIndex` — One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
+- `varDeclState` — The accumulator after pack vars and the first k declaring points: what both positional readers
 - `collectNodeDecls` — Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
 - `_posVarMapCacheVer` — #767: per-pill POSITIONAL variable maps for a point that declares a variable in its OWN text.
 - `renderPosVarMaps`

@@ -18623,6 +18623,154 @@ test('#1657 a := declaration sees its own point and ancestor props (collectVars,
   }
 });
 
+// A seeded document: nested, with redeclarations of a small name pool (shadowing), typed and
+// untyped, pick and distribution declarations, cycles (a := b + 1 beside b := a + 1), references,
+// point props a declaration reads (#1657), variable bases, collapsed and done branches, and
+// (declProb 0) documents that declare nothing.
+function varDocFixture(seed, size, declProb) {
+  const rng = c.rngFromSeed(seed), pick = a => a[Math.floor(rng() * a.length)];
+  const NAMES = ['a', 'b', 'hp', 'gold', 'tot'];
+  const EXPRS = ['1', '7', 'a + 1', 'b + 1', 'b * 2', 'hp - a', 'gold + tot', 'r1 + 2', '"word"', 'missing + 1'];
+  const r = c.mkRoot(), all = [r];
+  let key = 0;
+  for (let i = 0; i < size; i++) {
+    const n = c.mkNode('Point ' + i);
+    n.vars = [];
+    const toks = 1 + Math.floor(rng() * 3);
+    for (let t = 0; t < toks; t++) {
+      const k = 'k' + (key++), roll = rng();
+      if (roll < declProb) {
+        const v = { key: k, name: pick(NAMES), expr: pick(EXPRS) };
+        if (rng() < 0.5) v.typed = true;
+        if (rng() < 0.15) { v.kind = 'pick'; v.rolled = pick(['3', 'goblin', '12']); }
+        else if (rng() < 0.1) { v.kind = 'dist'; v.expr = '2 to 8'; }
+        n.vars.push(v); n.text += ' [[var:' + k + ']]';
+      } else if (roll < declProb + 0.3) {
+        n.vars.push({ key: k, name: pick(NAMES), expr: '' }); n.text += ' [[var:' + k + ']]';
+      } else if (roll < declProb + 0.4) n.text += ' [[math:' + k + ']]';
+    }
+    if (rng() < 0.2) n.props.push({ key: 'r1', val: String(Math.floor(rng() * 9)) });
+    if (declProb && rng() < 0.03) {
+      n.type = 'base'; n.varbase = rng() < 0.5 ? { name: 'm' + i } : {};
+      n.text = '| Name | HP |\n| --- | --- |\n| Orc' + i + ' | ' + (i % 9) + ' |';
+    }
+    let p = pick(all);
+    for (let tries = 0; (p.children?.length || 0) >= 5 && tries < 5; tries++) p = pick(all);
+    p.children.push(n); all.push(n);
+    if (rng() < 0.1) p.collapsed = true;
+    if (rng() < 0.1) { n.type = 'todo'; n.checked = true; }
+  }
+  return { root: r, all };
+}
+
+test('varMapAt + renderPosVarMaps: the shared declaration index gives every point the per-node walk\'s result', () => {
+  // varMapAt / renderPosVarMaps moved from one tree walk PER NODE to one walk per generation
+  // (varDeclIndex) with maps shared by declaration count. The walks they replaced, verbatim minus
+  // their caches, are kept here as the reference: the differential test proves the index changes no
+  // result for any point of any document.
+  vm.runInContext(`
+  function __refVarMapAt(targetNode) {
+    const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+    const propScopes = Object.create(null), anc = [];
+    const add = (nm, expr, pick, dist, ps) => {
+      if (!(nm in defs)) order.push(nm);
+      defs[nm] = expr;
+      if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
+      if (dist !== undefined) dists[nm] = dist; else delete dists[nm];
+      if (ps) propScopes[nm] = ps; else delete propScopes[nm];
+    };
+    for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
+    let done = false;
+    (function walk(node) {
+      if (done || !node) return;
+      if (node === targetNode) { collectNodeDecls(node, add, anc); done = true; return; }
+      collectNodeDecls(node, add, anc);
+      if (node !== root) anc.unshift(node);
+      for (const c of node.children || []) { walk(c); if (done) return; }
+      if (node !== root) anc.shift();
+    })(root);
+    const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
+    attachVarDists(resolved, dists);
+    return resolved;
+  }
+  function __refPosVarMaps(node) {
+    if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
+    const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+    const propScopes = Object.create(null), anc = [];
+    const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
+    for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
+    let done = false;
+    (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+    const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
+    const RE = /\\[\\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\\]\\]/gi;
+    let m;
+    while ((m = RE.exec(node.text || '')) !== null) {
+      byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order, propScopes).resolved, Object.assign(Object.create(null), dists)));
+      if (m[1] === 'var') {
+        const v = node.vars?.find(x => x.key === m[2]);
+        if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
+                                   v.kind === 'dist' ? v : undefined, ownProps);
+      }
+    }
+    return byKey;
+  }`, c._context);
+  const norm = m => m && { vals: { ...m }, dists: c.varDistsOf(m) && { ...c.varDistsOf(m) } };
+  const normPos = m => m && [...m].map(([k, v]) => [k, norm(v)]);
+  let compared = 0, declaring = 0, posCompared = 0, distMaps = 0;
+  try {
+    for (let seed = 1; seed <= 40; seed++) {
+      const { root, all } = varDocFixture(seed, 20 + (seed * 7) % 60, seed % 5 === 0 ? 0 : 0.35);
+      c._context.__vdRoot = root;
+      vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();', c._context);
+      const rng = c.rngFromSeed(seed * 31);
+      const order = [...all].sort(() => rng() - 0.5);        // the cache fills in an arbitrary order
+      const outside = c.mkNode('Detached [[var:zz]]'); outside.vars = [{ key: 'zz', name: 'a', expr: '5' }];
+      for (const n of nonEmpty([...order, outside], 'fixture points')) {
+        const got = c.varMapAt(n);
+        Object.freeze(got);                                    // shared across points: nothing may write it
+        assert.deepStrictEqual(norm(got), norm(c._context.__refVarMapAt(n)), `seed ${seed}: varMapAt(${n.text.slice(0, 40)})`);
+        compared++; if (c.varDistsOf(got)) distMaps++;
+        const pos = c.renderPosVarMaps(n);
+        assert.deepStrictEqual(normPos(pos), normPos(c._context.__refPosVarMaps(n)), `seed ${seed}: renderPosVarMaps(${n.text.slice(0, 40)})`);
+        if (pos) posCompared++;
+      }
+      declaring += c.varDeclIndex().steps.length;
+    }
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
+  assert.ok(compared > 1500 && declaring > 300 && posCompared > 200 && distMaps > 100,
+    `the fixture went thin: ${compared} points, ${declaring} declaring, ${posCompared} per-token, ${distMaps} with a distribution`);
+});
+
+test('varMapAt: one document walk per generation, and points between two declarations share one map', () => {
+  const { root, all } = varDocFixture(7, 60, 0.15);
+  const ctx = c._context;
+  ctx.__vdRoot = root;
+  vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();' +
+    'var __vdWalks = 0, __vdOrig = collectNodeDecls; collectNodeDecls = function (...a) { __vdWalks++; return __vdOrig(...a); };', ctx);
+  try {
+    for (const n of all) c.varMapAt(n);
+    assert.equal(ctx.__vdWalks, all.length, 'every point read, and each visited exactly once');
+    const idx = c.varDeclIndex(), k = n => idx.at.get(n)[1], last = all[all.length - 1];
+    const twin = all.find(n => n !== last && k(n) === k(last));
+    assert.ok(twin, 'the fixture has two points with the same declaration count');
+    assert.strictEqual(c.varMapAt(twin), c.varMapAt(last), 'same declarations above, the identical map');
+    // a point added before the generation bump is one the walk never met: rebuild, do not guess
+    const late = c.mkNode('Late [[var:lt]]'); late.vars = [{ key: 'lt', name: 'gold', expr: '99' }];
+    root.children.unshift(late);
+    assert.equal(c.varMapAt(late).gold, 99, 'the late point sees its own declaration');
+    assert.equal(c.varMapAt(all[1]).gold, 99, 'and the rebuilt index puts it above everything after it');
+    root.children.shift();
+    const blank = varDocFixture(8, 40, 0).all;
+    ctx.__vdRoot = blank[0];
+    vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();', ctx);
+    assert.equal(new Set(blank.map(n => c.varMapAt(n))).size, 1, 'a document that declares nothing resolves once');
+  } finally {
+    vm.runInContext('collectNodeDecls = __vdOrig; root = mkRoot(); buildIndex(root); resetDocCaches();', ctx);
+  }
+});
+
 // #1657, the call sites the headless cores cannot run: the declaration pill evaluates its own
 // expression with the point's props, and the Edit expression preview reads the pill's scope.
 test('#1657 the var pill and the math dialog preview read the pill scope (src pins)', () => {

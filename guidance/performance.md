@@ -258,6 +258,44 @@ the "can I paint now?" signal: a hit paints the section complete and instantly, 
 costs a visible blank-then-fill. Without it every render would defer, including ones that changed
 nothing.
 
+### `varMapAt` at the END of a document: one walk per generation (2026-11-26)
+
+Measured in headless Chromium 159 (Playwright, `file://`) on a shared 4-core Debian 13 host, load
+average 5.4 to 8 throughout (other agents running), so read the shape and the ratio, not the absolute
+numbers. Seeded tree (branching up to 6, fully expanded), scrolled to the bottom; each figure is the
+median of 15 synchronous calls of the app's own `insertSiblingAfter` / `indentNode`+`outdentNode` /
+`deleteNode` on the last point, or a real `input` event for the keystroke. `varMapAt` time is
+`varMapAt` + `renderPosVarMaps` wrapped in the page. "200 vars" = 200 chained declarations
+(`{vK := vK-1 + 1}`) spread evenly in document order, plus a `{= vK}` on every 7th point.
+
+| points | vars | indent/outdent before (of which `varMapAt`) | after (of which) | Enter before | Enter after |
+|---|---|---|---|---|---|
+| 1 000 | 0 | 18.6 (3.1) | 14.8 (0.3) | 18.6 (4.1) | 16.4 (0.4) |
+| 5 000 | 0 | 48.2 (16.2) | 35.7 (1.1) | 44.2 (21.2) | 23.0 (0.9) |
+| 10 000 | 0 | 87.7 (35.1) | 49.6 (1.6) | 85.3 (56.4) | 27.2 (1.7) |
+| 1 000 | 200 | 174 (147) | 76 (52) | 58.7 (36.0) | 31.9 (8.2) |
+| 5 000 | 200 | **607 (556)** | **97 (52)** | 74.5 (50.5) | 25.6 (2.5) |
+| 10 000 | 200 | 1 497 (1 404) | 124 (53) | 110 (77) | 42.3 (4.6) |
+
+Delete tracks indent/outdent; a plain keystroke is 0.3 to 0.8 ms with no `varMapAt` call, before and
+after. The same edit at the TOP of the document was already cheap (1 to 16 ms of `varMapAt`).
+
+**Why it was worse than "35 rows x position".** The window's rows are only part of it: the focus
+after an edit runs `collectUnlinkedRefs`, whose `displayText` reads `varMapAt` for every point that
+passes `ART_SNIFF`, i.e. every pill-bearing point in the document (2,703 reads per edit at 5k with
+200 vars). Each cold read walked the tree up to its point, so the cost was O(pill points x position).
+
+**The fix.** `varDeclIndex` walks the document once per generation and records, per point, how many
+declaring points precede it; `varMapAt` caches resolved maps by that count, so every point between
+two declarations shares one map and a document with no declarations resolves once. `renderPosVarMaps`
+replays the same index instead of its own walk. Proven identical to the old per-node walks by a
+seeded differential test (`varMapAt + renderPosVarMaps: the shared declaration index...`).
+
+**What is left** is the ~52 ms flat at 200 chained declarations: the backlinks scan still asks for a
+map at each of the 200 declaration counts, and each resolves its whole chain. It no longer grows with
+document size. Incremental resolution between counts would remove it, but `resolveVarDefs` resolves
+eagerly per map, so that is a change to the resolver, not to this cache.
+
 ### Scroll, doc-caches, and pill-heavy documents
 
 | scenario | M | W |
