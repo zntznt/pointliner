@@ -3941,7 +3941,9 @@ function collectSequences(rootNode) {
   const out = [];
   function gather(node) {
     for (const sq of (node.seq || [])) {
-      if (!node.text.includes(`[[seq:${sq.key}]]`)) continue;
+      // `sq &&`: render() reads this through parseTodo OUTSIDE renderContentHTML's row boundary, and
+      // an autosave restore never passed arrAttr, so a null record here used to abort every boot.
+      if (!sq || !node.text.includes(`[[seq:${sq.key}]]`)) continue;
       if (sq.name && Array.isArray(sq.states) && sq.states.length) out.push(sq);
     }
     for (const c of node.children) gather(c);
@@ -7327,57 +7329,65 @@ const INLINE_CTL = 'contenteditable="false" tabindex="-1"';
 // inline tokens ([[dice:KEY]] etc.) can resolve. mdToHtml is synchronous, so
 // the globals are safe (no re-entrance).
 function renderContentHTML(node) {
-  _longDecimalShown = null;   // #1584: only a pill THIS paint shows may teach the decimals door
-  diceRenderList    = node.dice    || null;
-  markovRenderList  = node.markov  || null;
-  mathRenderList    = node.math    || null;
-  estRenderList     = node.est     || null;
-  varRenderList     = node.vars    || null;
-  grammarRenderList = node.grammar || null;
-  seqRenderList     = node.seq     || null;
-  queryRenderList   = node.query   || null;
-  cookieNode        = node;
-  globalVarMap      = collectVars();
-  globalRuleMap      = collectRules();   // document-wide rule map — the globalVarMap twin, so mdInline never calls collectRules() per cell
-  // Positional resolution (Stage B): this node's pills resolve {name} against the variables
-  // visible AT this node (declarations above it), not the document-wide last-wins map. The
-  // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
-  // check eval use the document-wide collectVars() (#1581: never this snapshot, see globalVarMap).
-  renderVarMap      = varMapAt(node);
-  renderPosVarMap   = renderPosVarMaps(node);   // #767: per-pill positional maps when this point declares vars inline
-  // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
-  // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
-  // Whole-node code blocks get their own fence-aware renderer.
-  // An Org keyword at the start of the TEXT (markdown-first — no type gate): render
-  // keyword badge + priority chip, then the body (sans keyword) as normal markdown.
+  // Per-row boundary: a pill renderer that throws on a malformed record (a shared file, or a tampered
+  // autosave that skipped arrAttr) costs THIS row its pills, not the whole render, which used to
+  // abort, get autosaved, and then throw again on every boot.
   let html;
-  if (node.type === 'code') {
-    html = codeNodeHTML(node);
-  } else {
-    const { keyword, priority, body } = parseTodo(node.text);
-    if (keyword) {
-      const kw = keyword.toLowerCase();
-      // done-states of ANY sequence get the muted "done" look (DONE keeps its own class)
-      const doneCls = keywordIsDone(keyword) ? ' todo-state-isdone' : '';
-      const heldCls = !doneCls && keywordIsHeld(keyword) ? ' todo-state-isheld' : '';   // UXP-161: held reads muted
-      // UXP-177: the badge is a real click-to-open control (→ showTodoPicker), so it carries the pill
-      // a11y kit — role/tabindex/name/title — and gets an Enter/Space keydown twin in the content
-      // handler (beside its mousedown, caret invariant). tabindex="-1" = programmatic/AT focus, as
-      // every peer inline chip uses.
-      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" ${INLINE_CTL} aria-label="State: ${keyword}. Change state or priority" title="Change state or priority">${keyword}</span>`;
-      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" ${INLINE_CTL} aria-label="Priority ${priority}. Change state or priority" title="Change state or priority">[#${priority}]</span>` : '';
-      const bodyHtml = mdToHtml(body || '');
-      // inject badges inside the first block-open tag so they flow inline with the text
-      const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
-      html = m ? m[1] + badge + chip + bodyHtml.slice(m[1].length) : badge + chip + bodyHtml;
-    } else if (node.type === 'ol') {
-      // Strip N. prefix before mdToHtml; the .ol-num DOM span provides the visual
-      // ordinal (display-computed from sibling position, UXP-25)
-      const om = node.text.match(/^\s*\d+\.\s+([\s\S]*)/);
-      html = mdToHtml(om ? om[1] : node.text);
+  try {
+    _longDecimalShown = null;   // #1584: only a pill THIS paint shows may teach the decimals door
+    diceRenderList    = node.dice    || null;
+    markovRenderList  = node.markov  || null;
+    mathRenderList    = node.math    || null;
+    estRenderList     = node.est     || null;
+    varRenderList     = node.vars    || null;
+    grammarRenderList = node.grammar || null;
+    seqRenderList     = node.seq     || null;
+    queryRenderList   = node.query   || null;
+    cookieNode        = node;
+    globalVarMap      = collectVars();
+    globalRuleMap      = collectRules();   // document-wide rule map — the globalVarMap twin, so mdInline never calls collectRules() per cell
+    // Positional resolution (Stage B): this node's pills resolve {name} against the variables
+    // visible AT this node (declarations above it), not the document-wide last-wins map. The
+    // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
+    // check eval use the document-wide collectVars() (#1581: never this snapshot, see globalVarMap).
+    renderVarMap      = varMapAt(node);
+    renderPosVarMap   = renderPosVarMaps(node);   // #767: per-pill positional maps when this point declares vars inline
+    // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
+    // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
+    // Whole-node code blocks get their own fence-aware renderer.
+    // An Org keyword at the start of the TEXT (markdown-first — no type gate): render
+    // keyword badge + priority chip, then the body (sans keyword) as normal markdown.
+    if (node.type === 'code') {
+      html = codeNodeHTML(node);
     } else {
-      html = mdToHtml(node.text);
+      const { keyword, priority, body } = parseTodo(node.text);
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        // done-states of ANY sequence get the muted "done" look (DONE keeps its own class)
+        const doneCls = keywordIsDone(keyword) ? ' todo-state-isdone' : '';
+        const heldCls = !doneCls && keywordIsHeld(keyword) ? ' todo-state-isheld' : '';   // UXP-161: held reads muted
+        // UXP-177: the badge is a real click-to-open control (→ showTodoPicker), so it carries the pill
+        // a11y kit — role/tabindex/name/title — and gets an Enter/Space keydown twin in the content
+        // handler (beside its mousedown, caret invariant). tabindex="-1" = programmatic/AT focus, as
+        // every peer inline chip uses.
+        const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" ${INLINE_CTL} aria-label="State: ${keyword}. Change state or priority" title="Change state or priority">${keyword}</span>`;
+        const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" ${INLINE_CTL} aria-label="Priority ${priority}. Change state or priority" title="Change state or priority">[#${priority}]</span>` : '';
+        const bodyHtml = mdToHtml(body || '');
+        // inject badges inside the first block-open tag so they flow inline with the text
+        const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
+        html = m ? m[1] + badge + chip + bodyHtml.slice(m[1].length) : badge + chip + bodyHtml;
+      } else if (node.type === 'ol') {
+        // Strip N. prefix before mdToHtml; the .ol-num DOM span provides the visual
+        // ordinal (display-computed from sibling position, UXP-25)
+        const om = node.text.match(/^\s*\d+\.\s+([\s\S]*)/);
+        html = mdToHtml(om ? om[1] : node.text);
+      } else {
+        html = mdToHtml(node.text);
+      }
     }
+  } catch (e) {
+    console.error('renderContentHTML: row', node && node.id, 'shown as plain text:', e);
+    html = escHtml(node.text);
   }
   diceRenderList    = null;
   markovRenderList  = null;
@@ -8791,7 +8801,7 @@ function mdInline(s) {
     // assumed this cue fired; it never did.) Walk the top-level groups with matchBrace instead, and
     // stash the whole span so the innermost pass cannot then also flag its parts and double-mark it.
     // Guarded on an actually-nested brace, so ordinary text pays one cheap regex test.
-    if (/\{[^{}]*\{/.test(s)) {
+    if (/\{[^{}]*\{/.test(s) && !braceDepthExceeds(s)) {
       let out = '', k = 0;
       while (k < s.length) {
         if (s[k] !== '{') { out += s[k++]; continue; }
@@ -10209,7 +10219,7 @@ function toOpml(r) {
   function nx(n, d) {
     const pad = padOf(d);
     let attrs = `text="${ex(n.text)}"`;
-    if (n.type && n.type !== 'ul') attrs += ` _type="${n.type}"`;
+    if (n.type && n.type !== 'ul') attrs += ` _type="${ex(n.type)}"`;   // read back unchecked from a file, so escaped like every other attr
     if (n.checked)   attrs += ` _checked="true"`;
     if (n.collapsed) attrs += ` _collapsed="true"`;
     if (n.folded)    attrs += ` _folded="true"`;               // paragraph collapsed to its first line
@@ -10364,8 +10374,11 @@ function treeDepthExceeds(node, max = MAX_OPML_DEPTH) {
 // [] on a missing attr, malformed JSON, OR valid-but-non-array JSON (#448). Every sidecar
 // (dice/markov/math/vars/grammar/est/seq/query/props/…) is an array the render path calls
 // .find/.map on, so a non-array here would throw downstream — the guard belongs at parse.
+// Every record read through here is keyed by a string `key` (the [[type:key]] token it backs), so a
+// record that is null, not an object, or keyless is dropped too: the collectors and pill renderers
+// read `.key` off every entry, and one `[null]` in a shared file used to throw out of render().
 function arrAttr(el, name) {
-  try { const v = JSON.parse(el.getAttribute(name) || '[]'); return Array.isArray(v) ? v : []; }
+  try { const v = JSON.parse(el.getAttribute(name) || '[]'); return Array.isArray(v) ? v.filter(r => r && typeof r === 'object' && typeof r.key === 'string') : []; }
   catch (_) { return []; }
 }
 function fromOpml(xml) {
@@ -10377,7 +10390,9 @@ function fromOpml(xml) {
   // clicks/edits/drops resolve to the OTHER node, then autosave persists the corrupted tree. Reassign
   // a duplicate to a fresh uid() so the index stays 1:1. No-op for a clean doc.
   const seenIds = new Set();
-  const freshId = (raw) => { let id = raw || uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
+  // An id with a quote, backslash or control char cannot sit in the `[data-id="…"]` selectors the app
+  // builds raw, and never comes from uid(), so it is reassigned like a duplicate.
+  const freshId = (raw) => { let id = raw && !/["\\\x00-\x1f]/.test(raw) ? raw : uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
   function po(el, depth = 0) {
     // WAVE-3 HARD-11 (crash): clamp ingestion nesting. The recursive tree-walkers downstream
     // (toOpml / collectVars / collectRules / render) overflow the stack, so the clamp is set LOWER —
@@ -26386,6 +26401,19 @@ function splitTopLevel(str, sep) {
   return out;
 }
 
+// The brace walks that call matchBrace from every `{` (mdInline's nested pass, promoteInlineShorthand)
+// cost O(length x nesting depth), so a hostile `{{{…}}}` five thousand deep took over 20 s to render.
+// Real pills nest a handful deep (4 is the deepest in the guide); past 32 the walks are skipped.
+// A literal default, not a const: mdInline sits far above this line and may run before it does.
+function braceDepthExceeds(s, max = 32) {
+  let d = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '{') { if (++d > max) return true; }
+    else if (s[i] === '}' && d) d--;
+  }
+  return false;
+}
+
 // Index of the `}` matching the `{` at `open`; -1 if unmatched.
 function matchBrace(str, open) {
   let depth = 0;
@@ -29326,8 +29354,8 @@ function renderSeqGenPill(key, g) {
   // is already voiced by the "Last card" cta. Display-layer only; draw state untouched.
   const left = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length > 0 && !ended
     ? `${g.bag.length} of ${g.items.length} cards left. ` : '';
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}${seqNote ? ' gr-stale' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${left}${cta}"`
-    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${left}${cta}">`
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}${seqNote ? ' gr-stale' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${escQ(left + cta)}"`
+    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${escQ(left + cta)}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -30254,7 +30282,7 @@ function promoteInlineShorthand(node, say) {
   const voice = typeof say === 'function' ? say : flashHint;
   _promotedLit = new Map();
   const text = node.text;
-  if (text.indexOf('{') < 0) return false;
+  if (text.indexOf('{') < 0 || braceDepthExceeds(text)) return false;
   const codeSpans = codeSpanRanges(text);   // a `{2d6}` inside inline code stays literal (the escape hatch)
   let out = '', i = 0, changed = false;
   while (i < text.length) {
@@ -31498,7 +31526,7 @@ function formatNumDisplay(n, fmt) {
     // #1175: SIGNIFICANT figures, the scale-independent sibling of decimals. Trailing zeros are KEPT
     // (2.5 at 3 s.f. is "2.50") for the same reason an explicit decimals keeps them: the author asked
     // for exactly that many, and in significant figures a trailing zero IS the precision claim.
-    body = n.toPrecision(fmt.sigfigs);
+    body = fmt.sigfigs >= 1 && fmt.sigfigs <= 100 ? n.toPrecision(fmt.sigfigs) : formatMathResult(n);   // a file's fmt record is unchecked; toPrecision throws outside 1..100
     if (/e/i.test(body)) body = formatMathResult(n);   // an exponent is never shown to the user
   } else {
     body = formatMathResult(n);
@@ -32709,13 +32737,14 @@ function renderVarPill(key, v) {
         + `<span class="vs-margin${vs.mismatch ? ' vs-mixed' : ''}">${escHtml(marginLabel)}</span>`
       : escHtml(rolled);
     const aria = vs
-      ? `Contest${anon ? '' : ' ' + escQ(v.name)}: ${vs.leftTotal} versus ${vs.rightTotal}, ${who}${anon ? '' : `, margin ${signed(vs.margin)}`}. Click to re-roll`
-      : `Random variable ${escQ(v.name)} = ${escQ(rolled)}. ${pickNote ? escQ(pickNote) : 'Click to re-roll'}`;
+      ? `Contest${anon ? '' : ' ' + v.name}: ${vs.leftTotal} versus ${vs.rightTotal}, ${who}${anon ? '' : `, margin ${signed(vs.margin)}`}. Click to re-roll`
+      : `Random variable ${v.name} = ${rolled}. ${pickNote || 'Click to re-roll'}`;
     // escQ the title: braceAttemptReason QUOTES the name it reports ("No rule or variable named
     // \"adjective\"…"), which ends the attribute early if it goes in raw. #1361 fixed exactly this
-    // hole on the grammar pill; the same reason arrives here through the same door.
+    // hole on the grammar pill; the same reason arrives here through the same door. The aria is
+    // escaped once at the sink too: the contest totals come straight from the file's _vars record.
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(title)}"`
-      + ` aria-label="${aria}">`
+      + ` aria-label="${escQ(aria)}">`
       + (anon ? '' : `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
         + `<span class="var-name">${escHtml(v.name)}</span>`
         + `<span class="var-eq">=</span>`)

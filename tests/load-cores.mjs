@@ -321,6 +321,7 @@ export function loadCores() {
     'varKindLabel',                             // #1353 Phase 3: naming a variable's kind
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
+    'arrAttr', 'braceDepthExceeds', 'matchBrace',   // untrusted-file hardening: sidecar record filter, the brace-walk cap
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'isRemoteUrl','urlHost','webImagesAllowed','webImageBlockedHtml',   // #1325: web-image opt-in cores
     'imageDialogFields',   // #1326: the shared Insert-image fields + opt-in-aware preview
@@ -413,6 +414,7 @@ export function loadCores() {
     'lastAutosaveSavedAt',                        // reads the autosave out of localStorage
     'stashPayloadAsPrev', 'withPrevStoreLock',    // #846: the prev-store write, under navigator.locks
     'writeClipboard', 'fallbackCopy', 'copyTextToClipboard',   // #1585: the clipboard doors around clipboardWriteVia
+    'renderContentHTML',                          // the per-row render boundary; its tests set `root` and swap console.error
     // the promotion passes say a refused date through promoteBraceBody's flashHint (promoteBraceBodyIn,
     // the decision itself, is pure and in `need`)
     'promoteBraceBody', 'promoteInlineShorthand', 'promoteCellShorthand', 'promoteLoadedShorthand',
