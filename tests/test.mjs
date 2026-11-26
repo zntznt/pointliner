@@ -39763,14 +39763,12 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     'renderTreeRows:row':   { why: 'the point-tree picker: its search box owns ↑/↓/Enter (activedescendant)', proof: /search\.setAttribute\('aria-activedescendant', 'tp-opt-' \+ activeIdx\)/ },
     'showCellEditorPop:b':  { why: 'the status popover is the pointer path; the cell’s Shift+F10 menu "Set to" rows are its keyboard twin', proof: /addSection\('Set to', true\);/ },
     'showCellEditorPop:none': { why: 'its Clear, twinned by the same menu’s Clear row', proof: /addItem\('Clear', \{ active: curVal === '', onApply/ },
+    // #1542: the selection toolbar roves from the caret (Alt+F10, activedescendant) and Enter/Space
+    // dispatch the active icon's mousedown, so the icons' keyboard half lives in one capture listener.
+    ...Object.fromEntries(['ic', 'linkIc', 'fnIc'].map(r => [`buildSelTb:${r}`, { why: '#sel-tb: Alt+F10 roves it from the caret, Enter/Space dispatch the icon mousedown',
+      proof: /else if \(step\.run != null\) \{ endSelTbKbd\(\); items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}/ }])),
     "(top):document.getElementById('btn-graph')": { why: 'a pre-click snapshot of the caret, not the action; the button’s own click is what Enter/Space fire', proof: /document\.getElementById\('btn-graph'\)\.addEventListener\('click', toggleGraph\);/ },
   };
-  // #1542: KNOWN GAP, deliberately allowlisted and NOT fixed here: the selection toolbar's format,
-  // link and footnote icons act on mousedown with no keyboard twin, which leaves 5 of its 9 actions
-  // without a keyboard path. It needs a focus model for a floating toolbar first (#1542). This list
-  // may only SHRINK: the day one of these gains a twin, its entry goes stale and fails below, and a
-  // NEW twin-less site anywhere fails the census rather than joining this list quietly.
-  const KNOWN_GAP_1542 = new Set(['buildSelTb:ic', 'buildSelTb:linkIc', 'buildSelTb:fnIc']);
 
   const dead = [], used = new Set(), twins = new Set();
   for (const s of sites) {
@@ -39778,7 +39776,7 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     if (s.recv === 'document' || s.recv === 'window') continue;            // the page itself: dismissal, bookkeeping
     const key = `${s.fn}:${s.recv}`;
     if (hasKeyTwin(s.scope, s.recv)) { twins.add(key); continue; }
-    if (EXEMPT[key] || KNOWN_GAP_1542.has(key)) { used.add(key); continue; }
+    if (EXEMPT[key]) { used.add(key); continue; }
     dead.push(key);
   }
   assert.deepEqual(dead, [],
@@ -39788,11 +39786,40 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     assert.ok(used.has(k), `stale exemption: ${k} no longer acts without a twin, so remove it from EXEMPT`);
     assert.match(_src, EXEMPT[k].proof, `${k}: the evidence for "${EXEMPT[k].why}" is gone, so the exemption is no longer true`);
   }
-  for (const k of KNOWN_GAP_1542) {
-    assert.ok(used.has(k), `${k} has a keyboard twin now (or moved): take it off the #1542 allowlist`);
-  }
   // and the two #1586 sites are counted as twinned BY the census, not merely present
   assert.ok(twins.has('buildChipRow:b'), 'the insert-dialog chip is a twinned control');
+});
+
+// #1542: the selection toolbar's keyboard door, as a pure step and its wiring.
+test('#1542 selTbKey: Alt+F10 enters, arrows rove, Enter/Space run, Escape leaves, anything else passes', () => {
+  const k = (key, m = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...m });
+  const step = (...a) => { const r = c.selTbKey(...a); return r && { ...r }; };   // out of the vm realm
+  assert.deepEqual(step(k('F10', { altKey: true }), null, 8), { to: 0 }, 'Alt+F10 lands on the first icon');
+  assert.equal(step(k('F10', { altKey: true }), null, 0), null, 'no toolbar on screen, no claim');
+  assert.equal(step(k('F10', { altKey: true, shiftKey: true }), null, 8), null, 'Shift+Alt+F10 is not the door');
+  assert.equal(step(k('F10', { shiftKey: true }), null, 8), null, 'Shift+F10 stays the context menu');
+  assert.equal(step(k('Enter'), null, 8), null, 'outside the toolbar, Enter is the point\'s');
+  assert.deepEqual(step(k('ArrowRight'), 2, 8), { to: 3 });
+  assert.deepEqual(step(k('ArrowLeft'), 0, 8), { to: 0 }, 'ends clamp, as every roving group does');
+  assert.deepEqual(step(k('End'), 2, 8), { to: 7 });
+  assert.deepEqual(step(k('End'), 7, 8), { to: 7 }, 'an end key at the end holds rather than passing to the caret');
+  assert.deepEqual(step(k('PageDown'), 1, 8), { exit: true, pass: true }, 'a key the toolbar has no use for is not swallowed');
+  assert.deepEqual(step(k('Enter'), 4, 8), { run: 4 });
+  assert.deepEqual(step(k(' '), 5, 8), { run: 5 });
+  assert.deepEqual(step(k('Escape'), 5, 8), { exit: true }, 'Escape leaves the toolbar only');
+  assert.deepEqual(step(k('a'), 1, 8), { exit: true, pass: true }, 'typing leaves and types');
+  assert.deepEqual(step(k('ArrowLeft', { shiftKey: true }), 1, 8), { exit: true, pass: true }, 'Shift+arrows still extend the selection');
+});
+
+test('#1542 the toolbar door is wired: capture phase, stamped ids, cleared on hide', () => {
+  const door = between(_src, 'let selTbKbd = null;', '}, true);');
+  assert.match(door, /const step = selTbKey\(e, selTbKbd \? selTbKbd\.idx : null, items\.length\);/, 'the listener asks the pure step');
+  assert.match(door, /e\.preventDefault\(\); e\.stopPropagation\(\);/, 'a claimed key never reaches the point (Enter would split it)');
+  assert.match(_src, /items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}\n  else setSelTbActive\(items, step\.to\);\n\}, true\);/,
+    'registered in the capture phase, ahead of the point\'s own keys');
+  assert.match(fnBody(_src, 'buildSelTb'), /el\.id = 'seltb-opt-' \+ i;/, 'every icon gets the id activedescendant names');
+  assert.match(fnBody(_src, 'hideSelTb'), /endSelTbKbd\(\);/, 'a hidden toolbar cannot keep the arrows');
+  assert.match(_src, /<div id="sel-tb" role="toolbar" aria-label="Format the selection"><\/div>/);
 });
 
 // The other half of the family: a <div>/<span> with a click listener and nothing else is mouse-only
