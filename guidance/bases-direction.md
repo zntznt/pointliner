@@ -117,7 +117,9 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   columns from `inferRowShape`. It narrows WHICH points a query base reads; it adds no predicate over
   owned rows and no view library (`base-views-vision.md` §0.6), and nothing turns into a base (§6).
   Row ops and title writes stay suppressed (`query-base-proposal.md` §3); lifting that for
-  list-scoped bases is the proposal's slice 4 and an owner call.
+  list-scoped bases is the proposal's slice 4 and an owner call. Slice 3 (2026-11-26) adds a
+  column picker to that base's query editor: checkboxes over the list's property keys that rewrite
+  the same columns text (same spec, same storage; no new syntax).
 
   **Per-column number format shipped (ε, 2026-07-24).** A Number column can format as
   money/measure/percent, not only group thousands: `node.colFmt` (OPML `_colfmt`) holds a

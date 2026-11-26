@@ -9520,3 +9520,90 @@ test('#1666 a running order of h:mm times totals 2:05, and the h:mm box can be u
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });
+
+// table-view-proposal.md slice 3 -- choose a list's table columns by ticking. Before: the only way
+// to drop `yield` or add the one-off `note` was to edit the columns textarea's mini-language by hand.
+// Driven both ways: the strip is clicked open, Tab reaches a box and Space ticks it (focus and
+// `checked` watched, and the textarea moves with it), a pointer click unticks another, typing in the
+// textarea re-ticks the box, and Save changes the GRID, not just the dialog.
+test('table view: the query editor picks the columns of a list with checkboxes, by key and by pointer', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>F</title></head><body>' +
+      '<outline text="## Crops"><outline text="Kale {prop beds: 4} {prop yield: 30} {prop note: slugs}"/><outline text="Chard {prop beds: 2} {prop yield: 12}"/></outline>' +
+      '</body></opml>')); render(); });
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => [...document.querySelectorAll('.addrow-affordance')].find(d => d.textContent.trim() === '+ Table view').click());
+    await pg.waitForTimeout(500);
+    await pg.locator('.mt-qbase-head').first().dispatchEvent('mousedown');
+    await pg.waitForTimeout(400);
+    const box = name => pg.getByRole('group', { name: 'Show as columns' }).getByRole('checkbox', { name, exact: true });
+    const state = () => pg.evaluate(() => ({
+      boxes: [...document.querySelectorAll('.io-checks input')].map(b => [b.labels[0].textContent, b.checked]),
+      cols: document.getElementById('io-fld-cols').value,
+      focus: document.activeElement?.labels?.[0]?.textContent || document.activeElement?.id || null,
+    }));
+    let s = await state();
+    assert.deepEqual(s.boxes, [['beds', true], ['yield', true], ['note', false]],
+      'one box per key, the shape first and the one-off note after, ticked exactly when shown');
+
+    // keyboard: Tab from the last ticked box reaches note; Space ticks it.
+    await box('yield').focus(); await pg.keyboard.press('Tab');
+    s = await state();
+    assert.equal(s.focus, 'note', 'Tab walks the boxes in order');
+    await pg.keyboard.press('Space');
+    s = await state();
+    assert.deepEqual(s.boxes.find(b => b[0] === 'note'), ['note', true], 'Space ticks it');
+    assert.equal(s.cols, 'Name: title\nbeds\nyield\nnote', 'and the columns text gains its line');
+    assert.equal(await box('note').isChecked(), true, 'the accessibility tree reports it checked, under its own name');
+
+    // pointer: clicking the label unticks yield, and the text loses exactly that line.
+    await pg.locator('.io-checks label', { hasText: /^yield$/ }).click();
+    s = await state();
+    assert.deepEqual(s.boxes.find(b => b[0] === 'yield'), ['yield', false]);
+    assert.equal(s.cols, 'Name: title\nbeds\nnote');
+
+    // the reverse door: typing the line back in re-ticks the box (one source of truth).
+    await pg.locator('#io-fld-cols').focus(); await pg.keyboard.press('Control+End'); await pg.keyboard.type('\nyield');
+    s = await state();
+    assert.deepEqual(s.boxes.find(b => b[0] === 'yield'), ['yield', true], 'typing a column ticks its box');
+    await box('yield').focus(); await pg.keyboard.press('Space');   // and drop it again from the keyboard
+
+    await pg.keyboard.press('Enter');   // Enter on a box saves, like every dialog field
+    await pg.waitForTimeout(500);
+    const grid = await pg.evaluate(() => [...document.querySelector('.md-table-host').querySelectorAll('tr')]
+      .map(tr => [...tr.children].map(td => td.innerText.trim())));
+    assert.deepEqual(grid, [['Name', 'beds', 'note'], ['Kale', '4', 'slugs'], ['Chard', '2', '']], 'the grid shows the ticked columns');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+// The picker on a phone: the boxes wrap inside the dialog at 320px and 375px, no sideways scroll.
+test('table view: the column picker fits a 320px and a 375px screen', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    for (const width of [320, 375]) {
+      await pg.setViewportSize({ width, height: 800 });
+      await pg.evaluate(() => { closeIo(); adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>F</title></head><body>' +
+        '<outline text="## Crops"><outline text="Kale {prop beds: 4} {prop yield: 30} {prop sowing_window_weeks: 6} {prop companion_planting_notes: x}"/>' +
+        '<outline text="Chard {prop beds: 2} {prop yield: 12} {prop sowing_window_weeks: 3} {prop companion_planting_notes: y}"/></outline>' +
+        '</body></opml>')); render(); });
+      await pg.waitForTimeout(300);
+      await pg.evaluate(() => [...document.querySelectorAll('.addrow-affordance')].find(d => d.textContent.trim() === '+ Table view').click());
+      await pg.waitForTimeout(400);
+      await pg.locator('.mt-qbase-head').first().dispatchEvent('mousedown');
+      await pg.waitForTimeout(300);
+      const r = await pg.evaluate(() => {
+        const opts = [...document.querySelectorAll('.io-checks-opt')];
+        const card = document.getElementById('io-card');
+        const cr = card.getBoundingClientRect();
+        return { n: opts.length, off: opts.filter(o => o.getBoundingClientRect().right > Math.min(innerWidth, cr.right) + 0.5).map(o => o.textContent),
+          scroll: document.documentElement.scrollWidth > innerWidth, cardScroll: card.scrollWidth > card.clientWidth };
+      });
+      assert.equal(r.n, 4, `${width}px: four boxes`);
+      assert.deepEqual(r.off, [], `${width}px: no box runs past the dialog`);
+      assert.equal(r.scroll, false, `${width}px: no sideways page scroll`);
+      assert.equal(r.cardScroll, false, `${width}px: the dialog does not scroll sideways`);
+    }
+  } finally { await pg.close(); }
+});

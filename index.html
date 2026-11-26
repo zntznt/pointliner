@@ -1857,6 +1857,13 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-field.io-check input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--acc);cursor:pointer;margin:0}
 .io-field.io-check label{display:inline;margin:0;font-size:12.5px;font-weight:500;color:var(--fg);text-transform:none;letter-spacing:normal;cursor:pointer}
 .io-field.io-check .io-hint{flex-basis:100%;margin-top:0}
+/* table-view slice 3: a checkbox GROUP (fieldset), the eyebrow as its legend, boxes that wrap on a phone. */
+.io-field.io-checks{border:0;padding:0;min-width:0}
+.io-field.io-checks legend{padding:0;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}/* the UXP-154 eyebrow */
+.io-checks-opts{display:flex;flex-wrap:wrap;gap:6px 14px}
+.io-checks-opt{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.io-checks-opt input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--acc);cursor:pointer;margin:0}
+.io-field .io-checks-opt label{display:inline;margin:0;font-size:12.5px;font-weight:500;color:var(--fg);text-transform:none;letter-spacing:normal;cursor:pointer;overflow-wrap:anywhere}
 .props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
 .props-list-row{display:flex;align-items:center;gap:6px}
 .props-list-sep{color:var(--muted);font-size:13px;flex-shrink:0}
@@ -25954,6 +25961,40 @@ function openInsertDialog(opts) {
       root.appendChild(wrap);
       return;
     }
+    // table-view slice 3: a GROUP of checkboxes that is a front door onto another field. It holds no
+    // value of its own (it is not in `inputs`, so drafts and onSubmit never see it): each box shows
+    // `checked(optKey, all)` and a toggle calls `onToggle`, which rewrites the field it fronts.
+    if (f.type === 'checks') {
+      const fs = document.createElement('fieldset'); fs.className = 'io-field io-checks';
+      const lg = document.createElement('legend'); lg.textContent = f.label; fs.appendChild(lg);
+      const opts = document.createElement('div'); opts.className = 'io-checks-opts';
+      const boxes = f.options.map((o, j) => {
+        const span = document.createElement('span'); span.className = 'io-checks-opt';
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = `io-fld-${f.key}-${j}`;
+        const cl = document.createElement('label'); cl.textContent = o.label; cl.setAttribute('for', cb.id);
+        // `input`, not `change`: a checkbox fires input first, and this target-phase listener must
+        // rewrite the fronted field BEFORE the root's bubbling listener re-previews and re-syncs.
+        cb.addEventListener('input', () => { f.onToggle(o.key, cb.checked, inputs); validate(); });
+        cb.addEventListener('keydown', e => {
+          if (e.key !== 'Tab') e.stopPropagation();
+          if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+          else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        });
+        span.append(cb, cl); opts.appendChild(span);
+        return [o.key, cb];
+      });
+      // Typing in the fronted field moves the boxes too, so the two never disagree.
+      const sync = () => {
+        const all = {}; for (const k in inputs) all[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value;
+        for (const [k, cb] of boxes) cb.checked = f.checked(k, all);
+      };
+      _previewFns.push(sync);
+      queueMicrotask(sync);   // the fronted field may be built after this one; tick once all exist
+      fs.appendChild(opts);
+      if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; fs.appendChild(h); }
+      root.appendChild(fs);
+      return;
+    }
     const lab = document.createElement('label'); lab.textContent = f.label;
     const area = f.type === 'textarea';
     const inp = document.createElement(area ? 'textarea' : 'input');
@@ -33028,8 +33069,33 @@ function parseQBaseCols(text) {
   }
   return out.length ? out : null;
 }
+// table-view-proposal.md slice 3: the column picker is a front door onto the columns textarea, so
+// the TEXT stays the one store and these three read and rewrite it line by line. A key matches a
+// column the way queryTableRows projects one: trimmed, case-insensitive. Pure.
+function qbaseColsHave(text, key) {
+  const k = String(key || '').trim().toLowerCase();
+  return !!k && (parseQBaseCols(text) || []).some(cd => cd.field.trim().toLowerCase() === k);
+}
+// Tick appends a bare `key` line (its name defaults to the key); untick drops every line projecting
+// it. Every other line, a formula or a renamed column, keeps its exact text and place. Pure.
+function qbaseColsToggle(text, key, on) {
+  const k = String(key || '').trim();
+  const lines = String(text || '').split('\n');
+  if (!k || on === qbaseColsHave(text, k)) return String(text || '');
+  if (on) { const kept = String(text || '').replace(/\s+$/, ''); return kept ? kept + '\n' + k : k; }
+  return lines.filter(l => !qbaseColsHave(l, k)).join('\n');
+}
+// The keys a list-scoped base offers as checkboxes: the row shape's columns in its order, then any
+// other key a row carries (dataPropKeys: a one-off `note` is still pickable, bookkeeping never is).
+function listColumnKeys(kids, states) {
+  const out = [], seen = new Set();
+  const add = k => { const lk = String(k || '').trim().toLowerCase(); if (lk && !seen.has(lk)) { seen.add(lk); out.push(String(k).trim()); } };
+  for (const p of (inferRowShape(kids, states)?.props || [])) add(p.key);
+  for (const n of (kids || [])) if (n && !n.qbase) dataPropKeys(n).forEach(add);
+  return out;
+}
 
-function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', sortText = '', scope, onResult }) {
+function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', sortText = '', scope, pickKeys = [], onResult }) {
   const offerList = scope !== undefined;   // editing offers the list scope; creating from / does not
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '\u{1F50D}' },
@@ -33046,6 +33112,11 @@ function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: tit
         hint: 'Any search the box accepts. The rows update themselves as the document changes.' },
       ...(offerList ? [{ key: 'inList', type: 'checkbox', label: 'Only the points in this list', value: scope === 'siblings',
         hint: 'Rows are the points beside this table, under the same parent. A search here narrows them; leave it blank for all of them.' }] : []),
+      ...(pickKeys.length ? [{ key: 'pick', type: 'checks', label: 'Show as columns',
+        options: pickKeys.map(k => ({ key: k, label: k })),
+        checked: (k, all) => qbaseColsHave(all.cols, k),
+        onToggle: (k, on, inputs) => { inputs.cols.value = qbaseColsToggle(inputs.cols.value, k, on); },
+        hint: 'Tick a property to add its column, untick to remove it. The lines below change to match; formulas stay there.' }] : []),
       { key: 'cols', label: 'Columns (one per line)', type: 'textarea', value: colsText, required: true,
         placeholder: 'Title: title\ndue\nCost: = sum(cost)',
         preview: v => {
@@ -33083,6 +33154,7 @@ function editQBase(node) {
     colsText: node.qbase.cols.map(cd => (cd.name && cd.name !== cd.field) ? `${cd.name}: ${cd.field}` : cd.field).join('\n'),
     sortText: cur && curList[cur.col] ? `${(curList[cur.col].name || curList[cur.col].field).trim()}${cur.dir === 'desc' ? ' desc' : ''}` : '',
     scope: node.qbase.scope || '',
+    pickKeys: node.qbase.scope === 'siblings' ? listColumnKeys(parentOf(node.id)?.children, knownStates(root)) : [],
     onResult: (expr, cols, sort, scope) => {
       node.qbase = { expr, cols,
         ...(node.qbase.showAll ? { showAll: true } : {}),
@@ -45104,7 +45176,7 @@ const GUIDE = [
     ] },
   { id:'list-table-view', cat:'todos',
     title:'See a list as a table',
-    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, filter or pick columns, click the strip above the table: Sort rows takes a column name and desc, a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
+    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, filter or pick columns, click the strip above the table: Sort rows takes a column name and desc, Show as columns has a box per property to tick or untick (formula columns are still typed under Columns), a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
     related:['querybase','bases-overview','properties','addrow'],
     examples:[
       { syn:'\u002b Table view',            desc:'at the end of a list whose points share properties', ctl:'Show list as table view' },

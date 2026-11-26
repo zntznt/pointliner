@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2217 declarations in 158 sections across 17 domains.**
+**2220 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1823,6 +1823,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `QUERY_CHIPS` — The search-operator chips shared by the query and query-base dialogs: TEACH chips that insert
 - `openQueryDialog`
 - `parseQBaseCols` — parseQBaseCols(text) — one column per line: 'Name: field' or just 'field' (the
+- `qbaseColsHave` — table-view-proposal.md slice 3: the column picker is a front door onto the columns textarea, so
+- `qbaseColsToggle` — Tick appends a bare `key` line (its name defaults to the key); untick drops every line projecting
+- `listColumnKeys` — The keys a list-scoped base offers as checkboxes: the row shape's columns in its order, then any
 - `openQBaseDialog`
 - `editQBase`
 - `VARBASE_PREVIEW_CAP` — Variable base: turn a base's rows into document variables (bases-direction §7b). The

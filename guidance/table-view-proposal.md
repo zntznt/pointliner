@@ -142,7 +142,7 @@ needs a sort state announced (`aria-sort`).
 
 **Verdict: within doctrine, no owner call needed.**
 
-### Slice 3: choose columns by ticking, not by typing lines (not built)
+### Slice 3: choose columns by ticking, not by typing lines (SHIPPED)
 
 **What.** The query editor's columns field is a textarea mini-language (`Name: field`, one per
 line). For a list-scoped base, offer the list's property keys as checkboxes (from `inferRowShape`
@@ -152,6 +152,17 @@ plus any sparse key `dataPropKeys` sees), with the textarea kept for formulas.
 no new syntax (P5). Formula columns stay text, which is where the math grammar already lives.
 
 **Verdict: within doctrine, no owner call needed.**
+
+**Shipped.** On a list-scoped base the query editor shows **Show as columns**, one checkbox per key
+`listColumnKeys` finds (the row shape's columns in order, then any key a single row carries; never
+`created`/`edited`/`check`). Ticking appends a bare `key` line to the columns textarea and unticking
+drops every line projecting that key (`qbaseColsToggle`); every other line keeps its exact text. A box
+is ticked exactly when the text projects its key (`qbaseColsHave`, the grid's own trimmed,
+case-insensitive match), and typing in the textarea re-ticks the boxes, so there is one store and the
+two views of it cannot disagree. The group is a `fieldset`/`legend` (`checks` field type in
+`openInsertDialog`), keyboard-native (Tab, Space, Enter saves) and wraps at 320px. Sibling census:
+authored bases choose columns in the grid's Column menu and no checkbox door existed on either kind,
+so the new field type is the dialog's existing checkbox recipe grouped, not a twin.
 
 ### Slice 4: add, reorder and retitle rows from the table (needs an owner decision)
 

@@ -307,6 +307,11 @@ follows its list: duplicate or move the section and the copy shows its own point
 
 The title column stays a link (click it to jump to the point) and formula columns stay computed.
 
+To choose which properties show, click the strip and tick or untick them under **Show as columns**.
+Every property any point in the list carries is offered, even one only a single point has (a `note`
+on one crop). Ticking adds the column's line to **Columns** below and unticking removes it, so the
+two always agree; a formula column such as `Cost: = sum(cost)` is still typed there.
+
 ## Searching all your documents
 
 When several documents are in the same folder (a [connected
