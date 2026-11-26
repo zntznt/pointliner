@@ -581,6 +581,46 @@ next value in the seeded sequence. The seed is saved with the document.
 
 ---
 
+## Ready-made patterns
+
+Drop a complete, working example and change the values, instead of writing a pill from scratch. Open
+**All commands** with `Ctrl/Cmd+K` and browse the **Patterns** section: each one lands as a finished
+line or a small block with example rows, and most arrive with the part you are meant to edit already
+selected, ready to overtype.
+
+There are 10, one for each thing people reach for first:
+
+| Pattern | Lands as |
+|---|---|
+| Dice roll | `Damage {2d6}` |
+| Contested roll | `Attack {swing := 2d6+2 vs 2d6+1}` |
+| Yes / no oracle | `Does it happen? {oracle: even}` |
+| Either / or | `Weather {clear \| rain \| fog}` |
+| Tracked value | `HP {hp := 10}`, reusable as `{hp}` |
+| Estimate a range | `Travel days {2 to 5}` |
+| Running total | `Party gold {= sum(gold)}` over two example rows |
+| Roll on your own list | `Random NPC {roll: #npc}` over two tagged rows |
+| Scoped total | `This month {= sum("#thismonth", cost)}` over two tagged rows |
+| Pass / fail check | `Under budget {= sum(cost)}` with a check, over two example rows |
+
+A pattern fills the point you are on if that point is empty, otherwise it lands as the next point
+below, and one Undo removes the whole drop. They are ordinary text once dropped, so you can edit,
+delete or build on them like anything else you typed.
+
+## Roll menu (touch)
+
+Drop a roll mid-scene on a phone without hunting for braces on the keyboard. On a touch device the
+bottom bar has a dice button; tap it for a small palette of ready-made rolls: `{2d6}`, a d20, a d100,
+a yes/no oracle (`{oracle: likely}`), a roll on your own document (`{roll: #tag}`) and a
+this-or-that pick (`{a | b}`).
+
+Tap one and it lands as an editable point you can tweak, then tap **Done** to turn it into a pill and
+tap the pill to roll. Everything it inserts is ordinary pill text, so a roll you make this way is the
+same as one you typed by hand: it re-rolls on tap and can be named and reused. The palette is a
+shortcut for the common rolls; the `@` insert menu still has the full set.
+
+---
+
 ## Putting it together: a quick NPC generator
 
 Open **`@` → Grammar** and paste:

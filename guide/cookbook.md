@@ -228,6 +228,37 @@ questions are grammar rules, callable by name from anywhere.
 
 ---
 
+## Recipes in the app
+
+The in-app Concept guide (the **?** panel) carries six more recipes, each a few lines you can type
+in to see it work:
+
+- **Capture a roll, then branch on it.** Roll once, remember it, react to it: `{r := 1d20}` rolls a
+  d20 as `r`, `{r == 20: Critical!}` reacts to a natural 20 and `{= r + mod} to hit` adds your
+  modifier to the same roll. Click the capture to roll again and the math follows at once. See
+  [test a captured roll](generating-text.md#test-a-captured-roll-crits-and-checks).
+- **A character who stays consistent.** In the `@` Grammar dialog, write the choices as a rule
+  (`weapon: longsword | warhammer | dagger`) and give a choice its own field (`longsword.dmg: 1d8`).
+  Then freeze one pick with `{w := {weapon}}` and write `She draws her {w} for {w.dmg}.`, and both
+  mentions are the same weapon. See [items with fields](generating-text.md#items-with-fields-itemfield).
+- **A budget that totals and checks itself.** A parent point reads
+  `Trip: spent {= sum(cost)} of {= budget}` over children that each carry a `cost`, a check
+  `sum(cost) <= budget` on it (`/check`) flags it the moment you go over, and the search `is:failing`
+  finds every point that fails its check. See
+  [make the document check itself](computing-numbers.md#make-the-document-check-itself-constraints).
+- **A live status line.** Different pills on one line, each reading a different part of the
+  document: `{count: is:todo} open`, a `[/]` done tally over the child tasks and
+  `{query: #idea -is:done}` listing the matching points. Every piece updates on its own.
+- **Stock a scene from parts.** `This room holds {3x: {feature}}.` with each feature its own rule,
+  written in the `@` Grammar dialog (`feature: a {monster} | {treasure}`, `monster: rat | goblin | ghoul`,
+  `treasure: {2d6} silver | a {gem}`, `gem: opal | ruby | jade`). Name every rule you call, or the
+  pill shows a question mark. Want each thing only once? Swap the repeat for a
+  [deck](generating-text.md#draw-without-repeating-decks).
+- **Question your own document, with sources.** Tag open questions (`a question #openq`), roll on the
+  tag with `{roll: #openq}` to draw one when you are stuck, and pin each claim's source with a
+  footnote (`a claim here [^ref]`). The **Research notes** starter, in **File then Templates &
+  examples**, is this recipe already laid out.
+
 ## Where these come from
 
 Pointliner was born at the solo-RPG table, and the [solo RPG guides](solo-rpg/README.md) are the

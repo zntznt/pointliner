@@ -21,7 +21,8 @@ The everyday outliner. This is the part you use without thinking about it.
 
 - **Nested points.** Type, press `Enter` for a new point, `Tab` / `Shift+Tab` to indent or outdent.
   ([point types](writing-and-formatting.md#point-types))
-- **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
+- **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line. Select text for a
+  toolbar of styles, links and footnotes; `Alt+F10` reaches it from the keyboard.
   ([styling text](writing-and-formatting.md#styling-text))
 - **Image size.** An image fits the reading column by default; add `"wide"`, `"full"` or a
   percentage in the Markdown title to run it three quarters of the window, edge to edge, or at a

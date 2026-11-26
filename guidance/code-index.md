@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2206 declarations in 158 sections across 17 domains.**
+**2211 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1249,6 +1249,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `selTb`
 - `buildSelTb`
+- `selTbKbd` — #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+- `selTbKey` — Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+- `selTbItems`
+- `setSelTbActive`
+- `endSelTbKbd`
 
 ## touch edit bar
 
