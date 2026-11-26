@@ -36792,24 +36792,34 @@ async function newFile() {
     validate: () => true,   // blank is fine → falls back to a default name
     onSubmit: async v => {
       const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
-      // Leave the outgoing document a restore point. Order matters twice over:
-      //   · flush first, so the captured payload is the CURRENT document and not one up to
-      //     800ms stale (scheduleAutosave's debounce);
-      //   · capture BEFORE adoptDoc, whose own scheduleAutosave overwrites AUTOSAVE_KEY in place;
-      //   · stash AFTER adoptDoc, so root.docId is the new identity, and REKEY the payload to it.
-      // Without the rekey, earlierVersionForCurrentDoc's mis-keyed-entry guard rejects the entry
-      // (it re-checks the embedded docId against the store key). This is the reopenWorkspaceDoc
-      // unknownIdentity precedent: the discarded document becomes THIS document's earlier version.
-      flushPendingAutosave();
-      let outgoing = null;
-      try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
-      adoptDoc(mkRoot(), { fileName: fname });
-      if (outgoing) {
-        const rekeyed = rekeyPayloadDocId(outgoing, root.docId);
-        if (rekeyed) await stashPayloadAsPrev(rekeyed, root.docId);
-      }
+      await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });
     },
   });
+}
+
+// adoptDoc, leaving the outgoing document a restore point: New and both File > Open paths. In default
+// mode the outgoing document lives only in AUTOSAVE_KEY, and the incoming one's first autosave
+// overwrites it in place under a different docId, where earlierVersionForCurrentDoc never looks.
+// Order matters twice over:
+//   · flush first, so the captured payload is the CURRENT document and not one up to
+//     800ms stale (scheduleAutosave's debounce);
+//   · capture BEFORE adoptDoc, whose own scheduleAutosave overwrites AUTOSAVE_KEY in place;
+//   · stash AFTER adoptDoc, so root.docId is the new identity, and REKEY the payload to it.
+// Without the rekey, earlierVersionForCurrentDoc's mis-keyed-entry guard rejects the entry
+// (it re-checks the embedded docId against the store key). This is the reopenWorkspaceDoc
+// unknownIdentity precedent: the discarded document becomes THIS document's earlier version.
+// A shared snapshot never writes AUTOSAVE_KEY (that slot holds the user's own document), so the
+// outgoing snapshot is captured from memory instead.
+async function adoptDocWithRestorePoint(newRoot, opts) {
+  flushPendingAutosave();
+  let outgoing = null;
+  if (loadedFromEmbed) outgoing = capturePayloadOf(root);
+  else { try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {} }
+  adoptDoc(newRoot, opts);
+  if (outgoing) {
+    const rekeyed = rekeyPayloadDocId(outgoing, root.docId);
+    if (rekeyed) await stashPayloadAsPrev(rekeyed, root.docId);
+  }
 }
 
 // Rename the current outline from the menu header. On a Chromium file handle the
@@ -36881,14 +36891,14 @@ async function openFile() {
       const [newHandle] = picked.value;
       const file = await newHandle.getFile();
       const text = await file.text();
-      adoptDoc(fromOpml(text), { fileName: file.name, fileHandle: newHandle });
+      await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name, fileHandle: newHandle });
     } catch(e) { if (e.name!=='AbortError') flashError('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='.opml,text/x-opml,application/xml,text/xml';
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
-      try { adoptDoc(fromOpml(await file.text()), { fileName: file.name }); }
+      try { await adoptDocWithRestorePoint(fromOpml(await file.text()), { fileName: file.name }); }
       catch(e) { flashError('Invalid file: '+e.message); }
     };
     inp.click();
@@ -48351,8 +48361,12 @@ function scheduleAutosave() {
 function writeAutosavePayloadNow() {
   autosaveTimer = null;
   const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
-  if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
-  if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+  // A shared snapshot never writes the browser slot: the embed wins every reload, so it could never
+  // read the write back, and the slot belongs to the user's OWN document on this origin.
+  if (!loadedFromEmbed) {
+    if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
+    if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+  }
   // #1440: `&& dirty` — the folder write follows the DOCUMENT, not the view. Ten of the twenty-four
   // scheduleAutosave() call sites are pure view state (the agenda Running/Done/Overdue filters, its
   // sort order and folder scope, the Gantt column width). Those live in the JSON payload above and
@@ -48761,6 +48775,10 @@ async function restoreEarlierVersion() {
   })) return false;
   try {
     if (!applyAutosaveData(data)) { flashError('Could not read the earlier version'); return false; }
+    // The restore swaps `root` as adoptDoc does, so the history and selection recorded against the
+    // replaced tree go too: a stale text entry would write its old text into the restored point (#1522).
+    undoStack.length = 0; redoStack.length = 0;
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
     markDirty();                 // the restored state differs from disk; let it re-autosave (and re-snapshot)
     render();
     flashHint('Restored the earlier version');

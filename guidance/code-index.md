@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2218 declarations in 158 sections across 17 domains.**
+**2219 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2070,6 +2070,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `pickerRefusedMessage` — The message a refused picker earns. Names the browser as the cause and the way out, rather than
 - `adoptDoc` — The single runtime chokepoint for making `newRoot` the live document. Every
 - `newFile`
+- `adoptDocWithRestorePoint` — adoptDoc, leaving the outgoing document a restore point: New and both File > Open paths. In default
 - `commitFileName` — Rename the current outline from the menu header. On a Chromium file handle the
 - `openFile`
 - `saveFile`

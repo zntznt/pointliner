@@ -22733,17 +22733,62 @@ test('File → New leaves the outgoing document a restore point (data-loss regre
   assert.ok(!/if \(unsavedToDisk\(\) && !await openConfirmDialog/.test(nf),
     'the old unsavedToDisk() gate (false in default mode) must be gone');
   assert.ok(/Restore earlier version/.test(nf), 'the default-mode message names the recovery door');
-  // (b) the stash, in the one order that works.
-  const iFlush = nf.indexOf('flushPendingAutosave()');
-  const iGet   = nf.indexOf('localStorage.getItem(AUTOSAVE_KEY)');
-  const iAdopt = nf.indexOf('adoptDoc(mkRoot()');
-  const iStash = nf.indexOf('stashPayloadAsPrev(');
+  // (b) the stash, in the one order that works, now in the helper New and both Open paths share.
+  assert.ok(nf.includes('await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });'),
+    'New must swap through the restore-point helper');
+  assert.ok(!/\badoptDoc\(/.test(nf), 'and must not reach adoptDoc around it');
+  const h = fnBody(_src, 'adoptDocWithRestorePoint');
+  const iFlush = h.indexOf('flushPendingAutosave()');
+  const iGet   = h.indexOf('localStorage.getItem(AUTOSAVE_KEY)');
+  const iAdopt = h.indexOf('adoptDoc(newRoot, opts)');
+  const iStash = h.indexOf('stashPayloadAsPrev(');
   assert.ok(iFlush > -1 && iGet > -1 && iAdopt > -1 && iStash > -1, 'all four steps present');
   assert.ok(iFlush < iGet, 'flush BEFORE capture, or the payload is up to 800ms stale');
   assert.ok(iGet < iAdopt, 'capture BEFORE adoptDoc, whose scheduleAutosave overwrites AUTOSAVE_KEY');
   assert.ok(iAdopt < iStash, 'stash AFTER adoptDoc, so root.docId is the new identity');
-  assert.ok(/rekeyPayloadDocId\(outgoing, root\.docId\)/.test(nf),
+  assert.ok(/rekeyPayloadDocId\(outgoing, root\.docId\)/.test(h),
     'the payload must be rekeyed to the new docId, or the mis-keyed-entry guard rejects it');
+  // A snapshot never writes AUTOSAVE_KEY, so its outgoing copy comes from memory, before the adopt.
+  assert.ok(/if \(loadedFromEmbed\) outgoing = capturePayloadOf\(root\);/.test(h) && h.indexOf('capturePayloadOf(root)') < iAdopt,
+    'a shared snapshot must be captured from memory, or New/Open stashes the user\'s own document in its place');
+});
+
+// File > Open had the same hole New had: no stash, so a browser-only document was overwritten in
+// AUTOSAVE_KEY by the opened file's first autosave and keyed nowhere Restore looks. Driven in
+// tests/browser.mjs ("doc-swap: File > Open"); these pin that BOTH branches use the helper.
+test('File > Open leaves the outgoing document a restore point on both branches (doc-swap)', () => {
+  const of = fnBody(_src, 'openFile');
+  assert.ok(of.includes('await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name, fileHandle: newHandle });'),
+    'the File System Access branch must swap through the restore-point helper');
+  assert.ok(of.includes('try { await adoptDocWithRestorePoint(fromOpml(await file.text()), { fileName: file.name }); }'),
+    'the <input type=file> branch must swap through the restore-point helper');
+  assert.ok(!/\badoptDoc\(/.test(of), 'no bare adoptDoc is left in openFile');
+  // UXP-103: the confirm stays gated on a real loss risk; the restore point is what makes skipping it safe.
+  assert.ok(/if \(unsavedToDisk\(\) && !await openConfirmDialog\(/.test(of), 'Open keeps its UXP-103 confirm gate');
+});
+
+// Restore earlier version swaps `root` through applyAutosaveData, which (unlike adoptDoc) leaves the
+// undo history alone: Ctrl+Z then wrote a stale text entry into the restored point, and autosaved it.
+test('Restore earlier version drops the history and selection of the replaced tree (doc-swap)', () => {
+  const rest = fnBody(_src, 'restoreEarlierVersion');
+  const iApply = rest.indexOf('if (!applyAutosaveData(data))');
+  const iClear = rest.indexOf('undoStack.length = 0; redoStack.length = 0;');
+  const iSel = rest.indexOf('selectedIds.clear(); selAnchorId = null; selFocusId = null;');
+  const iRender = rest.indexOf('render();');
+  assert.ok(iApply > -1 && iClear > iApply, 'both stacks are cleared after a successful restore');
+  assert.ok(iSel > iApply && iSel < iRender, 'the selection is reset before the repaint (#1522)');
+});
+
+// A shared snapshot's autosave tick wrote AUTOSAVE_KEY and the OPFS copy, which only the user's own
+// launch of the app can ever read: the embed wins every reload of the snapshot itself.
+test('a shared snapshot does not write the browser autosave slot (doc-swap)', () => {
+  const body = fnBody(_src, 'writeAutosavePayloadNow');
+  const gated = between(body, 'if (!loadedFromEmbed) {', '}');
+  assert.ok(gated.includes('writeOpfsAutosave(payload)') && gated.includes('writeLocalAutosave(payload)'),
+    'both browser-slot writes sit inside the snapshot gate');
+  assert.equal((body.match(/write(Opfs|Local)Autosave\(/g) || []).length, 2, 'and there is no ungated copy of either');
+  assert.ok(!gated.includes('flushWorkspaceFile') && /if \(workspaceFile && dirty\) flushWorkspaceFile\(\)/.test(body),
+    'a folder the user connected from the snapshot is their own target and still gets written');
 });
 
 test('rekeyPayloadDocId + the prev store make an adopted document restorable', () => {
