@@ -196,7 +196,7 @@ export function loadCores() {
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
-    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
+    'seqParts', 'deckSearchHint', 'dealHits', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
@@ -359,7 +359,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','propExprValue','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
+    'childPropNumber','propExprValue','propScalar','rowPropVars','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'convertFailKind','convertUnitErrToken','unknownUnitPhrase',   // #1500: WHICH of convert()'s four failures happened
     'resolveScopeDepth','collectScoped',
@@ -377,7 +377,7 @@ export function loadCores() {
     'collectChronicleDates',   // #652 chronicle (in-world game log) timeline source
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'addRowTarget',  // #1438: which list `/addrow` acts on from the caret
-    'viewDoorHost',   // #1240 phase 4: which node's doors the VIEW hosts
+    'viewDoorHost', 'doorWritesShow', 'rowNoun',   // #1240 phase 4: which node's doors the VIEW hosts
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
