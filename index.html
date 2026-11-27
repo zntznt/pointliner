@@ -39451,8 +39451,12 @@ function toMarkdown(rootNode) {
       } else {
         const ownMarker = isTodo && isTaskFirst(body); // task form: the text IS the list item
         const marker = node.type === 'ol' ? `${ordinal}.` : '-';
-        out.push(ownMarker ? `${indent}${lines[0]}` : `${indent}${marker} ${lines[0]}`);
-        for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
+        // #1701: a CommonMark hard break (`\`) ends every line but the last, so the item's own lines
+        // stay distinct from its note (plain continuation lines below) and re-import as its text.
+        // A quote keeps `> ` per line and a fence is literal, so neither takes one.
+        const brk = (k) => (k < lines.length - 1 && !isQuote && node.type !== 'code') ? '\\' : '';
+        out.push(ownMarker ? `${indent}${lines[0]}${brk(0)}` : `${indent}${marker} ${lines[0]}${brk(0)}`);
+        for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}${brk(i)}`);
       }
     }
     // the point's note: plain continuation lines indented under the item
@@ -39503,10 +39507,11 @@ function markdownToPoints(md) {
   let listStack = [];   // {rel, node} within the current section (list nesting)
   let para = null;      // the paragraph node currently accumulating consecutive lines
   const fnDefs = [];    // {key, text} footnote definitions, attached at the end
+  let tail = null;      // #1701 {node, ind}: the point the last line opened, until a blank line
   const indentOf = (s) => s.length - s.replace(/^ +/, '').length;
   const newSection = () => { base = null; listStack = []; para = null; };
   const attach = (ind, node) => {
-    para = null;
+    para = null; tail = { node, ind };
     if (base === null) base = ind;
     const rel = Math.max(0, ind - base);
     while (listStack.length && listStack[listStack.length - 1].rel >= rel) listStack.pop();
@@ -39525,7 +39530,7 @@ function markdownToPoints(md) {
     const raw = lines[i].replace(/\t/g, '  ');
     const ind = indentOf(raw);
     const t = raw.trim();
-    if (t === '') { para = null; continue; }
+    if (t === '') { para = null; tail = null; continue; }
 
     const fence = t.match(/^(```|~~~)/);          // fenced code -> one code point holding the block
     if (fence) {
@@ -39533,10 +39538,20 @@ function markdownToPoints(md) {
       let j = i + 1;
       for (; j < lines.length; j++) { buf.push(lines[j]); if (lines[j].trim().startsWith(fence[1])) break; }
       i = j;
-      attach(ind, mkNode(buf.join('\n'), 'code'));
+      // #1701: a fence inside a list item sits at the item's content column; that indent is the
+      // container's, not the code's, so it comes off every line (fences included).
+      const strip = new RegExp('^ {0,' + ind + '}');
+      attach(ind, mkNode(buf.map(l => l.replace(/\t/g, '  ').replace(strip, '')).join('\n'), 'code'));
       continue;
     }
     const h = t.match(/^(#{1,6})\s+(.*)$/);       // ATX heading -> a section (nest by level)
+    // #1701: a heading indented INSIDE an open list item belongs to that item (our export writes a
+    // heading under a bullet that way), so it nests like an item instead of opening a top-level section
+    // that would swallow the siblings after it. A heading at the section's own column still sections.
+    if (h && base !== null && listStack.length && ind - base > listStack[0].rel) {
+      attach(ind, mkNode(`${'#'.repeat(h[1].length)} ${h[2].trim()}`, `h${h[1].length}`));
+      continue;
+    }
     if (h) {
       para = null;
       const level = h[1].length;
@@ -39545,6 +39560,7 @@ function markdownToPoints(md) {
       sections[sections.length - 1].kids.push(node);
       sections.push({ level, kids: node.children });
       newSection();
+      tail = { node, ind };
       continue;
     }
     if (HR_RE.test(t)) { attach(ind, mkNode(t, 'divider')); continue; }   // thematic break -> divider
@@ -39552,13 +39568,23 @@ function markdownToPoints(md) {
     if (fd) { fnDefs.push({ key: fd[1], text: fd[2].trim() }); para = null; continue; }
     const li = t.match(/^([-*+]|\d+[.)])\s+(.*)$/);                       // list item (bullet/ordered/task)
     if (li) {
-      const rest = li[2];
+      let rest = li[2];
+      while (rest.endsWith('\\') && i + 1 < lines.length && lines[i + 1].trim()) rest = rest.slice(0, -1) + '\n' + lines[++i].trim();   // #1701: hard break = the item's next line
       if (HR_RE.test(rest)) attach(ind, mkNode(rest, 'divider'));         // `- ---` is our exported divider
       else if (/^\[[ xX]\]\s/.test(rest)) attach(ind, mkNode(`- ${rest}`, 'todo'));   // a task keeps its box
       else attach(ind, mkNode(rest, /^\d/.test(li[1]) ? 'ol' : 'ul'));
       continue;
     }
     if (t.startsWith('> ') || t === '>') { attach(ind, mkNode(t, 'quote')); continue; }   // blockquote
+    // #1701: a plain line straight under a point (no blank line) on its content column is that point's
+    // continuation, which toMarkdown writes for the note and, last, the [key: value · ...] property line.
+    if (tail && ind >= tail.ind + 2) {
+      const pm = t.match(/^\[([^\]:]+: [^\]]*)\]$/);
+      if (pm) { tail.node.props = pm[1].split(' · ').map(kv => { const k = kv.indexOf(': '); return { key: kv.slice(0, k), val: kv.slice(k + 2) }; }); tail = null; }
+      else tail.node.note = (tail.node.note ? tail.node.note + '\n' : '') + raw.slice(tail.ind + 2);
+      para = null;
+      continue;
+    }
     if (para) para.text += '\n' + t;                                     // paragraph: coalesce lines
     else { const node = mkNode(t, 'para'); attach(ind, node); para = node; }
   }

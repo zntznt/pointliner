@@ -24106,6 +24106,23 @@ test('#1265 markdownToPoints — export then re-import is stable (round-trip fix
     'import(export(import(md))) equals import(md): export and import are inverses on our own shape');
 });
 
+test('#1701 markdownToPoints: round trip keeps nested code, nested headings, notes, multi-line items and props', () => {
+  const N = (t, ty, kids = [], extra = {}) => Object.assign(c.mkNode(t, ty), { children: kids }, extra);
+  const full = (ns) => ns.map(n => ({ text: n.text, type: n.type, note: n.note || '', props: (n.props || []).map(p => p.key + '=' + p.val), kids: full(n.children || []) }));
+  const trip = (kids) => c.markdownToPoints(c.toMarkdown(Object.assign(c.mkRoot(), { children: kids, footnotes: [] }))).points;
+  const cases = [
+    ['code under a bullet keeps no list indent', [N('A', 'ul', [N('```js\nif (a) {\n  b();\n}\n```', 'code')])]],
+    ['a heading under a bullet stays under it', [N('A', 'ul', [N('## H', 'h2', [N('x', 'ul')])]), N('B', 'ul')]],
+    ['a note comes back as the note', [N('Point', 'ul', [N('kid', 'ul')], { note: 'line1\nline2' })]],
+    ['a multi-line item keeps its lines', [N('a\nb', 'ul', [], { note: 'n' }), N('c', 'ul')]],
+    ['a property line comes back as properties', [N('Task', 'ul', [], { props: [{ key: 'status', val: 'done' }, { key: 'owner', val: 'al' }] })]],
+  ];
+  for (const [name, kids] of cases) {
+    const want = JSON.stringify(full(kids));
+    assert.equal(JSON.stringify(full(trip(kids))), want, name);
+  }
+});
+
 test('#1265 Markdown import — wired into the Import door (format-sniffed, reuses appendOpmlSubtrees)', () => {
   assert.ok(_src.includes('markdownToPoints(text)'), 'the Import door parses non-OPML text as Markdown');
   const dlg = fnBody(_src, 'openImportDialog');
