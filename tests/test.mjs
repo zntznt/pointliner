@@ -627,6 +627,16 @@ test('parseDice — reroll rK parses and validates its combinations', () => {
   assert.equal(c.parseDice('4d6r6'), null);        // threshold ≥ sides → null
 });
 
+test('parseDice refuses an exploding d1, which would only stop at the chain cap (#1697)', () => {
+  assert.equal(c.parseDice('1d1!'), null);           // a d1 always rolls its max: 1d1! totalled 100
+  assert.equal(c.parseDice('999d1!'), null);         // 99,900 and a 99,900-face chain to paint
+  assert.equal(c.parseDice('2d1!+3'), null);         // refused inside a sum too
+  assert.equal(c.parseDice('3d1!>=1'), null);        // and as a success pool
+  assert.equal(c.classifyBraceBody('1d1!', new Map(), {}), 'invalid');   // so it gets the .brace-attempt cue
+  assert.equal(c.rollParsed(c.parseDice('1d1')).total, 1);              // a plain d1 is still legal
+  assert.equal(c.parseDice('1d2!')[0].exploding, true);                 // the smallest explodable die
+});
+
 test('rollParsed — reroll replaces a die ≤K once, keeping the new value', () => {
   c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // die0: 1→reroll→6; dice 1–3: 4,4,4
   try {
@@ -766,6 +776,15 @@ test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)
   assert.equal(c.evalMath('not(sqrt(-1))'), null);
   // an unknown name inside still fails the expression (existing contract)
   assert.equal(c.evalMath('and(nope>1, 1)'), null);
+});
+
+test('evalMath: a NaN condition fails if() and ?: to null, never takes the else branch (#1696)', () => {
+  assert.equal(c.evalMath('if(log(-1), 10, 20)'), null);
+  assert.equal(c.evalMath('sqrt(-1) ? 1 : 2'), null);
+  // the untaken branch may be NaN: only the condition and the chosen branch decide
+  assert.equal(c.evalMath('if(1, 10, sqrt(-1))'), 10);
+  assert.equal(c.evalMath('0 ? sqrt(-1) : 2'), 2);
+  assert.equal(c.evalMath('if(0, 10, 20)'), 20);
 });
 
 test('evalCheck — a compound and(…) check passes the comparison gate and verdicts correctly (#539)', () => {
@@ -4241,6 +4260,11 @@ test('undo pushes are unconditional here, not guarded on activeContentId', () =>
   // idle and otherwise commits the in-flight typing as its own entry first.
   assert.ok(/function pushUndo\(\) \{\s*flushActiveTextEdit\(\);/.test(_src),
     'pushUndo flushes any in-progress text edit, which is what makes an unconditional call safe');
+  // #1702: the history pair are siblings. undo() flushed and redo() did not, so typing after an undo was
+  // never recorded, never cleared redoStack, and the next redo overwrote it with the old future.
+  for (const fn of ['undo', 'redo'])
+    assert.ok(/^\{\s*flushActiveTextEdit\(\);/.test(fnBody(_src, fn).replace(/^[^{]*/, '')),
+      `${fn}() flushes the live edit before it touches either stack`);
   const fate = fnBody(_src, 'flushActiveTextEdit');
   assert.ok(/if \(activeContentId == null\) return;/.test(fate), 'and that flush no-ops when nothing is being edited');
   for (const fn of ['toggleTaskInNode', 'advanceClockOrdinal']) {
@@ -7532,9 +7556,36 @@ test('table: a cell formula can reference a document variable', () => {
   assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR (bad ref)');
 });
 
+test('#1694 a table formula persists full precision, and only real noise snaps to zero', () => {
+  const t = c.parseTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | 234567.64 | |');
+  assert.equal(c.computeTable(t, '$3=$1+$2')[1][2], '1234567.89', 'cents survive a total over 1,000,000');
+  const painted = c.renderStaticTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | 234567.64 | |\n#+TBLFM: $3=$1+$2');
+  assert.ok(painted.includes('>1234567.9</td>') && !painted.includes('1234567.89'), 'painting still rounds to the display default');
+  const chain = c.parseTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | | |');
+  assert.equal(c.computeTable(chain, '$2=$1*3 :: $3=$2-$1')[1][2], '2000000.5', 'a chained formula reads the uncut value');
+  assert.equal(c.formatCellValue(0.1 + 0.2), '0.3', 'float dust is still washed out of the saved text');
+  assert.equal(c.formatCellValue(123456789012), '123456789012');
+  assert.equal(c.formatCellValue(1 / 0), c.formatMathResult(1 / 0));
+  // a real small value is a value
+  assert.equal(c.formatMathResult(3e-11), '3e-11');
+  assert.equal(c.formatMathResult(c.evalMath('6.626e-34')), '6.626e-34');
+  assert.equal(c.evalMath('3e-11 == 0'), 0, 'and the comparison agrees with what is shown');
+  // noise is judged against the operands that made it
+  for (const e of ['sin(pi)', 'cos(pi/2)', 'tan(pi)', 'sin(100*pi)', '0.1+0.2-0.3', 'avg(0.1, 0.2, -0.3)'])
+    assert.equal(c.evalMath(e), 0, e + ' snaps');
+  assert.equal(c.evalMath('sin(1e-13)'), Math.sin(1e-13), 'a small angle is not noise');
+  assert.equal(c.evalMath('1e-13 + 0'), 1e-13);
+  assert.equal(c.evalMath('1/0 - 5'), Infinity, 'an infinite operand never snaps a result');
+  assert.equal(c.reduceAgg('sum', [0.1, 0.2, -0.3]), 0, 'child rollups snap the same way');
+  assert.equal(c.computeTable(c.parseTable('| a | s |\n|---|---|\n| 0.1 | |\n| 0.2 | |\n| -0.3 | |'), '@4$2=vsum(@2$1..@4$1)')[3][1], '0');
+  assert.equal(c.noiseSnap(5e-13, 1), 0);
+  assert.equal(c.noiseSnap(5e-12, 1), 5e-12);
+  assert.equal(c.snappedSum([]), 0);
+});
+
 test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
   const f = (e) => computeTable(tblModel(), '@4$1=' + e)[3][0];
-  assert.equal(f('vmean(@2$2..@4$2)'), parseFloat((17 / 3).toPrecision(8)).toString());
+  assert.equal(f('vmean(@2$2..@4$2)'), String(parseFloat((17 / 3).toPrecision(15))));   // #1694: persisted at full precision
   assert.equal(f('vmax(@2$2..@4$2)'), '10');
   assert.equal(f('vmin(@2$2..@4$2)'), '2');
   assert.equal(f('vcount(@2$2..@4$2)'), '3');
@@ -21776,7 +21827,7 @@ test('#1528 linkText takes the document a string came FROM, and only the bare fo
   assert.match(lt, /const owner = docId \|\| home;/, "a bare id belongs to the string's home document");
   assert.match(lt, /workspaceIndex\?\.titles\?\.get\(owner\)/,
     "the index lookup goes through the owner -- reading the token's own docId there was the defect");
-  assert.match(lt, /linkText\(title, depth \+ 1, undefined, owner\)/,
+  assert.match(lt, /linkText\(title, depth \+ 1, undefined, owner, hide\)/,
     'and the recursion carries it, so a title inside a foreign title stays in that document');
 });
 
@@ -21792,7 +21843,7 @@ test('#1528 every sink that reads a foreign title is anchored on the document it
     'linkText(nd.title, 0, undefined, nd.docId)',   // the [[ picker's other-doc rows
     'linkText(title, 0, undefined, docId)',         // the CF-4 cross-doc backlink rows
     'linkText(title, 0, undefined, docId)',         // renderCrossLinkPill's caption
-    'linkText(title, depth + 1, undefined, owner)', // linkText's own recursion into a foreign title
+    'linkText(title, depth + 1, undefined, owner, hide)', // linkText's own recursion into a foreign title (#1698: carries the hide set)
   ], 'a foreign title read with no anchor resolves its ids in the wrong document');
   // the fourth surface is a COLLECTOR, not a render sink: the cross-doc unlinked-mention rows are
   // built from displayText, whose display arm calls linkText -- so it needs the anchor too. Its
@@ -22451,7 +22502,7 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   const plain = c.mkRoot();
   plain.children.push(c.mkNode('just prose'), decl('g1', 'gold', '100'));
   assert.deepEqual(host(c.exportExclusionImpact(plain, c.pruneNoexport(plain))),
-    { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 });
+    { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], lostFootnotes: 0, newBroken: 0 });
 
   // a named rule declared only in the excluded subtree is named too: like a variable, it fails
   // LOUDLY in the copy (the .brace-attempt cue), so the exporter should hear about it.
@@ -22507,6 +22558,50 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   inner.children.push(c.mkNode('unrelated prose'), sc3);
   assert.equal(c.exportExclusionImpact(inner, c.pruneNoexport(inner)).newBroken, 0,
     'a link wholly inside the exclusion is not a new break: its source left too');
+});
+
+// #1698: the head stores rode along unpruned, so a footnote cited only by an excluded point shipped
+// in the shareable file; and a caption-less link to an excluded point printed its title in prose.
+test('#1698 pruneNoexport drops a footnote cited only by excluded points, keeps the rest', () => {
+  const r = c.mkRoot();
+  const sec = c.mkNode('Secret [^f1] and [^f2]'); sec.noexport = true;
+  r.children.push(c.mkNode('public [^f2]'), sec);
+  r.footnotes = [{ id: 'f1', text: 'SECRET FOOTNOTE' }, { id: 'f2', text: 'shared note' }, { id: 'f3', text: 'orphan' }];
+  const p = c.pruneNoexport(r);
+  assert.deepEqual(host(p.footnotes.map(f => f.id)), ['f2', 'f3'],
+    'cited only by the excluded point goes; cited by a kept point stays; an orphan is not about the exclusion');
+  assert.ok(!c.toOpml(p).includes('SECRET FOOTNOTE'), 'the shareable copy does not carry it');
+  assert.equal(r.footnotes.length, 3, 'the live store is not mutated: the saves run on it');
+  assert.equal(c.exportExclusionImpact(r, p).lostFootnotes, 1, 'and the toast can say so');
+  const plain = c.mkRoot(); plain.children.push(c.mkNode('x')); plain.footnotes = [{ id: 'o', text: 'orphan' }];
+  assert.deepEqual(host(c.pruneNoexport(plain).footnotes), host(plain.footnotes), 'nothing excluded, nothing dropped');
+  assert.match(fnBody(_src, 'exportSelfContainedHtml'), /impact\.lostFootnotes/, 'the toast reads the count');
+});
+
+test('#1698 a caption-less link to an excluded point never prints its title in a prose export', () => {
+  const r = c.mkRoot();
+  const sec = c.mkNode('Secret plan'); sec.noexport = true;
+  const inner = c.mkNode('Hidden child'); sec.children.push(inner);
+  const kept = c.mkNode(`titled after [[#${inner.id}|]]`);
+  const pub = c.mkNode(`see [[#${sec.id}|]], [[#${sec.id}|my caption]] and [[#${kept.id}|]]`);
+  pub.note = `note [[#${sec.id}|]]`;
+  r.children.push(pub, kept, sec);
+  assert.deepEqual(host([...c.noexportIds(r)].sort()), [sec.id, inner.id].sort(), 'the whole excluded subtree');
+  c._context.__r1698 = r;
+  vm.runInContext('root = __r1698; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    const md = c.toMarkdown(r), txt = c.toPlainText(r), html = c.docToReadonlyHtml(r);
+    for (const [name, out] of [['markdown', md], ['text', txt], ['read-only html', html]]) {
+      assert.ok(!/Secret plan|Hidden child/.test(out), name + ' leaks an excluded title: ' + out);
+      assert.ok(out.includes('a point not in this export'), name + ' names the target neutrally: ' + out);
+    }
+    assert.ok(md.includes(`[my caption](#${sec.id})`), 'an explicit caption is the author\'s own text and still wins');
+    assert.ok(md.includes('[titled after a point not in this export]'), 'the hide set rides the title recursion');
+    assert.match(c.linkText(`[[#${sec.id}|]]`), /Secret plan/, 'on screen, with no hide set, the title still resolves');
+    // a SELECTION export passes only the chosen points; the excluded target lives outside them
+    const sel = c.toMarkdown({ children: [pub] });
+    assert.ok(!/Secret plan/.test(sel) && sel.includes('a point not in this export'), 'a selection export still hides it: ' + sel);
+  } finally { vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context); }
 });
 
 test('the HTML export wiring: pruned inside one folded pass, and no save path gained a prune', () => {
@@ -22568,7 +22663,7 @@ test('#1111 the WIRING, not just the cores — two mutations that survived until
     'the markdown emit must pass the resolved document file, not an empty string');
   assert.match(tm, /const docFileOf = \(docId\) => \{[\s\S]{0,320}nameByDocId\?\.get\(docId\)/,
     'and docFileOf must resolve a foreign docId to its NAME, falling back to the id');
-  assert.match(tm, /const lt = \(str\) => linkText\(str, 0, mdLink\);/, 'the emit must actually be installed');
+  assert.match(tm, /const lt = \(str\) => linkText\(str, 0, mdLink, undefined, hide\);/, 'the emit must actually be installed');
 
   // 2. The plain-text door going silent again. `exportedNote(root)` without the flag returns '',
   //    so dropping the argument reverts the report while every core test stays green.
@@ -23845,6 +23940,27 @@ test('#1296 tableToPoints: rows become points under one heading; number columns 
   assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
 });
 
+test('#1700 delimited import: quoted multi-line cells, a } in a value, and two lines of prose', () => {
+  // 1. A quoted cell may hold a newline (our CSV export and Excel's TSV clipboard both do this).
+  assert.deepEqual(host(c.importSplitRows('name,notes\nx,"line1\nline2"\ny,z', ',')),
+    [['name', 'notes'], ['x', 'line1\nline2'], ['y', 'z']], 'a quoted newline stays inside its cell');
+  assert.deepEqual(host(c.importSplitRows('a\tb\n"one\ntwo"\tc', '\t')), [['a', 'b'], ['one\ntwo', 'c']], 'TSV quotes a multi-line cell too');
+  assert.deepEqual(host(c.importSplitRow('5" pipe,x', ',')), ['5" pipe', 'x'], 'a quote inside a cell is literal');
+  const kids = c.tableToPoints('name,notes\nx,"line1\nline2"\ny,z', ',').points[0].children;
+  assert.equal(kids.length, 2, 'two data rows, not three points');
+  assert.equal(kids[0].text, 'x {prop notes: line1\nline2}', 'the multi-line value rides one {prop} token');
+  // 2. A brace in a value is written to the sidecar, not into the {prop} token it would break.
+  const r = c.tableToPoints('name,val,n\nr,x}y,2', ',').points[0].children[0];
+  assert.equal(r.text, 'r {prop n: 2}', 'nothing of the braced value is left in the text');
+  assert.deepEqual(host(r.props), [{ key: 'val', val: 'x}y' }], 'the value survives whole as a property');
+  // 3. Two lines of prose are not a table; a two-line table still is, and our own export round-trips.
+  assert.equal(c.sniffDelimited('Dear Bob, thanks for lunch\nSee you soon, Al'), null, 'a two-line note is prose');
+  assert.equal(c.sniffDelimited('Item,Cost\nSink,540'), ',', 'a two-line table is still a table');
+  const csv = c.rowsToCsv([['name', 'notes'], ['Sink', 'two lines,\nand a "quote"']]);
+  assert.equal(c.sniffDelimited(csv), ',', 'the export sniffs as a table');
+  assert.equal(c.tableToPoints(csv, ',').points[0].children[0].text, 'Sink {prop notes: two lines,\nand a "quote"}', 'the export round-trips');
+});
+
 test('#1324 pasting a spreadsheet into the OUTLINE runs the same conversion (not just the Import dialog)', () => {
   // handlePaste sniffs a delimited paste and converts it to the table-of-points, promotes the {prop} tokens,
   // and tells the user with an undoable toast. Before, this ran ONLY inside the Import dialog, so a paste
@@ -23885,6 +24001,25 @@ test('#1310 sectionToCsvRows: rows become a grid (union of property columns, val
   assert.equal(c.sectionToCsvRows(c.mkNode('lonely'), {}), null, 'no children → null');
   const plain = c.mkNode('p'); plain.children.push(c.mkNode('a'), c.mkNode('b'));
   assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
+});
+
+test('#1699 CSV export: values match the chip (reserved date keys stay raw) and formula cells are defused', () => {
+  const head = c.mkNode('## Log');
+  const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: v }); return n; };
+  head.children.push(
+    mk('=HYPERLINK("http://e.x","c")', [['when', '10/12/2024'], ['Date', '3/4'], ['cost', '60 * 3.50']]),
+    mk('-cmd', [['due', '1/2'], ['delta', '-5']]),
+  );
+  const rows = host(c.sectionToCsvRows(head, {}));
+  assert.deepEqual(rows[1].slice(1), ['10/12/2024', '3/4', '210', '', ''], 'a date key keeps its text (any case); a formula key still computes');
+  assert.deepEqual(rows[2].slice(1), ['', '', '', '1/2', '-5'], 'due is a date key too; a negative number stays a number');
+  const csv = c.rowsToCsv(rows);
+  assert.ok(csv.includes('"\'=HYPERLINK(""http://e.x"",""c"")"'), 'a formula title is prefixed with a quote');
+  for (const t of ['+1+1', '-1+1', '@SUM(A1)', '\t=1', '\r=1', '=1']) assert.equal(c.csvCell(t)[0] === '"' ? c.csvCell(t)[1] : c.csvCell(t)[0], "'", `${JSON.stringify(t)} is defused`);
+  for (const t of ['-5', '+3', '-2.5', 'a=b', '']) assert.equal(c.csvCell(t), t, `${JSON.stringify(t)} is untouched`);
+  // the chip and the CSV share one exemption, so they cannot drift apart again
+  assert.equal(c.propFormulaValue('when', '10/12/2024'), null);
+  assert.equal(c.propFormulaValue('ratio', '3/4'), 0.75, 'a non-reserved key computes, as #1317 shows it');
 });
 
 test('#1310 the CSV export is wired (a section with property rows gets a bullet-menu door)', () => {
@@ -26773,12 +26908,22 @@ test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calc
   assert.deepEqual(col(blanks, 1, 'asc'), ['3', '10', '']);
   assert.deepEqual(col(blanks, 1, 'desc'), ['10', '3', '']);
 
-  // cellNum is Calculate's reading, lifted out unchanged: parseFloat, so "10 gold" is 10
-  // (Calculate totals it as 10 too) and "$10" is nothing; blanks and null are nothing.
+  // cellNum is Calculate's reading: parseFloat, so "10 gold" is 10 (Calculate totals it as
+  // 10 too); blanks and null are nothing. #1693: a grouped or currency cell reads as the
+  // number it shows, as a property value does, not "1,000" as 1 and "$10" as nothing.
   assert.deepEqual([c.cellNum('10'), c.cellNum('  10.5 '), c.cellNum('10 gold'), c.cellNum('-2')],
     [10, 10.5, 10, -2]);
-  assert.deepEqual([c.cellNum('$10'), c.cellNum(''), c.cellNum('   '), c.cellNum(null), c.cellNum(undefined)],
-    [null, null, null, null, null]);
+  assert.deepEqual([c.cellNum('1,000'), c.cellNum('$10'), c.cellNum('$3,200.50'), c.cellNum('-$5'), c.cellNum('\u20ac7')],
+    [1000, 10, 3200.5, -5, 7]);
+  assert.equal(c.cellNum('1,000'), c.propScalar('1,000'), 'one value, one number, cell or property');
+  assert.deepEqual([c.cellNum(''), c.cellNum('   '), c.cellNum(null), c.cellNum(undefined)],
+    [null, null, null, null]);
+  // and through both consumers: Calculate's total and Sort's order
+  const sum = (md, f, r) => c.computeTable(c.parseTable(md), f)[r][1];
+  assert.equal(sum('| item | cost |\n| --- | --- |\n| a | 1,000 |\n| b | 50 |\n| c | 200 |\n| total | |', '@5$2=vsum(@2..@4)', 4), '1250');
+  assert.equal(sum('| item | cost |\n| --- | --- |\n| a | $5 |\n| b | $40 |\n| total | |', '@4$2=vsum(@2..@3)', 3), '45');
+  assert.deepEqual(col([['H', 'C'], ['a', '1,000'], ['b', '50'], ['c', '200']], 1, 'asc'), ['50', '200', '1,000']);
+  assert.deepEqual(col([['H', 'C'], ['a', '$5'], ['b', '$100'], ['c', '$40']], 1, 'asc'), ['$5', '$40', '$100']);
   // colIsNumeric: every non-empty cell must read, and an all-blank column is NOT numeric
   assert.equal(c.colIsNumeric(host(rows), 1, 4), true);
   assert.equal(c.colIsNumeric(host(mixed), 1, 3), false);
@@ -32232,6 +32377,47 @@ test('#1464 B3: a dialog never hands focus back to a surface that closed behind 
   assert.ok(captures >= 13, `the capture sites must all still be there, found ${captures}`);
 });
 
+// #1705: confirm paths dropped focus to <body> while dismiss kept it. A commit re-renders, so the
+// element captured on open is detached by close; the core follows it to its live twin, the DOM half
+// names that twin by a stable key, and closeIo runs it both now and one frame on (a commit that
+// renders AFTER closeIo detaches the target a second time).
+test('#1705 a dialog that commits hands focus to the re-rendered twin of its return target', () => {
+  const live = { isConnected: true, id: 'live' };
+  const gone = { isConnected: false, id: 'gone' };
+  const seen = [];
+  const find = el => { seen.push(el.id); return live; };
+  assert.equal(c.liveReturnTarget(live, find), live, 'a connected target is kept');
+  assert.deepEqual(seen, [], 'and never looked up');
+  assert.equal(c.liveReturnTarget(gone, find), live, 'a detached target is followed to its twin');
+  assert.deepEqual(seen, ['gone'], 'by asking about the detached element itself');
+  assert.equal(c.liveReturnTarget(gone, () => null), gone, 'no twin: left as it was (the old behaviour)');
+  assert.equal(c.liveReturnTarget(null, find), null);
+  assert.equal(c.baseRefocusSelector({ chrome: 'mt-qbase-head' }), '.mt-qbase-head',
+    'the query strip head is a stable target, so Save on Edit query base can find it again');
+
+  const ci = fnBody(_src, 'closeIo');
+  assert.equal((ci.match(/liveReturnTarget\(ret, returnTwin\)\.focus\(\)/g) || []).length, 2,
+    'closeIo focuses the live twin now AND again one frame on');
+  assert.match(ci, /requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === document\.body\)/,
+    'the second pass only fills an empty focus, never moves a real one');
+  const tw = fnBody(_src, 'returnTwin');
+  assert.match(tw, /\.node-content\[data-id=/, 'a point is found again by its id');
+  assert.match(tw, /baseRefocusSelector\(baseFocusDescriptor\(el\)\)/, 'a base control by the #1383 key');
+
+  // The File menu: every export row is the same family, so all of them return to the caret.
+  const exportRows = nonEmpty(_src.match(/getElementById\('btn-export-[a-z]+'\)\.addEventListener\('click', [^\n]*/g) || [],
+    'the export rows');
+  assert.ok(exportRows.length >= 4, 'all four export rows are counted: ' + exportRows.length);
+  for (const r of exportRows) assert.match(r, /closeFileMenuToCaret\(\); \}\);$/, 'returns to the caret: ' + r);
+  assert.match(fnBody(_src, 'closeFileMenuToCaret'), /const back = chromeReturn; closeFileMenu\(\); chromeReturn = back; restoreChromeReturn\(\);/,
+    'keeps the armed caret across closeFileMenu, which clears it, then restores it');
+  const nf = fnBody(_src, 'newFile');
+  assert.ok(nf.indexOf('ioReturnFocus = null;') >= 0 && nf.indexOf('ioReturnFocus = null;') < nf.indexOf('await adoptDocWithRestorePoint'),
+    'New drops the old document\'s File button as its return target');
+  assert.match(nf, /await adoptDocWithRestorePoint\(mkRoot\(\), \{ fileName: fname \}\);\s*if \(!IS_TOUCH && flatRows\.length\) focusNode\(flatRows\[0\]\.node\.id\);/,
+    'and starts the new document in its first point');
+});
+
 test('#1464 B5: Tab stays inside the point-actions menu', () => {
   const kd = between(_src, "bpop.addEventListener('keydown'", "// The node id to restore focus to");
   assert.match(kd, /else if \(e\.key === 'Tab'\) \{ e\.preventDefault\(\);/,
@@ -32497,8 +32683,8 @@ test('#1656 convert() knows area', () => {
 
 test('#1656 every row-formula reader passes the row, not an empty scope', () => {
   assert.ok(fnBody(_src, 'childPropNumber').includes('propExprValue(raw0, rowPropVars(child))'), 'the rollup reader');
-  assert.ok(fnBody(_src, 'buildPropsArea').includes('propExprValue(val, rowPropVars(node))'), 'the chip shows the computed value');
-  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propExprValue(p.val, rowPropVars(c))'), 'CSV freezes the computed value');
+  assert.ok(fnBody(_src, 'buildPropsArea').includes('propFormulaValue(propK, val, rowPropVars(node))'), 'the chip shows the computed value');
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propFormulaValue(k, p.val, rowPropVars(c))'), 'CSV freezes the computed value');
   assert.ok(fnBody(_src, 'inferRowShape').includes('propExprValue(raw, rowPropVars(n))'), 'the shape types the column');
   // census: no caller may drop back to the scope-less form, which reads gal * ppg as text
   const bare = [..._src.matchAll(/propExprValue\(([^()]*)\)/g)].filter(m => !m[1].includes(','));
@@ -37585,10 +37771,9 @@ test('#983 formatConvertResult: 4 significant figures, and the two escapes go to
   assert.equal(c.formatConvertResult('x'), c.formatMathResult('x'));
 });
 
-test('#983 formatMathResult is UNCHANGED — it is the lossless path this change must not touch', () => {
-  // The whole safety argument: formatMathResult's output is persisted into node.text by table
-  // recompute, so a rounding change there would be saved, not merely displayed. This pins the
-  // values #983 is about, so any future attempt to "just round it at the source" fails here.
+test('#983 formatMathResult is UNCHANGED — the default the convert rounding must not touch', () => {
+  // formatMathResult is the shared display default. #1694 moved table persistence to formatCellValue,
+  // but this still pins the values #983 is about, so "just round it at the source" fails here.
   assert.equal(c.formatMathResult(289.68192), '289.68192');
   assert.equal(c.formatMathResult(6.2137119224), '6.2137119');
   assert.equal(c.formatMathResult(0.0254), '0.0254');
@@ -37596,7 +37781,7 @@ test('#983 formatMathResult is UNCHANGED — it is the lossless path this change
   assert.equal(c.formatMathResult(160934.4), '160934.4');
   assert.equal(c.formatMathResult(1), '1');
   assert.equal(c.formatMathResult(123456789012), '123456789012', 'the big-integer guard still holds');
-  assert.equal(c.formatMathResult(1.2246467991473532e-16), '0', 'and the near-zero snap');
+  assert.equal(c.formatMathResult(c.evalMath('sin(pi)')), '0', 'and the near-zero snap, now made in evalMath (#1694)');
   // Side by side, so the change is legible as exactly one thing: display rounds, persistence does not.
   for (const [n, lossless, shown] of [
     [289.68192,    '289.68192', '289.7'],
@@ -41335,6 +41520,44 @@ test('table view slice 2: the header door is rendered, wired both ways, and writ
   assert.ok(by.includes('qbaseNextSort(node.qbase.sort, col)') && by.includes('node.qbase.sort = next'),
     'it writes the SAME config the editor writes, not a twin');
   assert.ok(by.includes('markDirty()') && by.includes('refreshTable(node)') && by.includes('flashHint('), 'persisted, repainted, announced');
+});
+
+// #1704: a list's table view had no arrow grammar (its readOnly build skips mtWireCells), so ArrowUp,
+// ArrowDown at the edges and Shift+Tab from the first cell dropped focus to <body>.
+test('#1704 query base arrows: the authored grid grammar, the header as row -1', () => {
+  const T = (k, i, cc) => host(c.qbaseArrowTarget(k, i, cc, 2, 3));
+  assert.deepEqual(T('ArrowUp', 1, 2), { i: 0, c: 2 }, 'up a row, same column');
+  assert.deepEqual(T('ArrowUp', 0, 1), { i: -1, c: 1 }, 'from the first row up to that column\'s sort header');
+  assert.equal(T('ArrowUp', -1, 1), 'prev', 'from the header out to the point above');
+  assert.deepEqual(T('ArrowDown', -1, 1), { i: 0, c: 1 }, 'from the header down into the first row');
+  assert.deepEqual(T('ArrowDown', 0, 0), { i: 1, c: 0 });
+  assert.equal(T('ArrowDown', 1, 0), 'next', 'from the last row out to the point below');
+  assert.equal(host(c.qbaseArrowTarget('ArrowDown', -1, 0, 0, 3)), 'next', 'an empty table: header down leaves it');
+  assert.equal(T('ArrowLeft', 1, 0), null, 'the left edge stops');
+  assert.deepEqual(T('ArrowLeft', 1, 2), { i: 1, c: 1 });
+  assert.equal(T('ArrowRight', 0, 2), null, 'the right edge stops');
+  assert.deepEqual(T('ArrowRight', -1, 0), { i: -1, c: 1 }, 'the header row moves across too');
+  assert.equal(T('Enter', 0, 0), null);
+});
+
+test('#1704 query base: arrows and the Tab/Enter edges are wired, and a commit repaints the outline row', () => {
+  const ed = fnBody(_src, 'mtWireQBaseEdit');
+  assert.ok(ed.includes('mtWireQBaseArrows(host, node);'), 'the cells get the arrow grammar');
+  const ar = fnBody(_src, 'mtWireQBaseArrows');
+  assert.ok(ar.includes('isAtFirstLine(cell)') && ar.includes('getCaretOffset(cell)'), 'the caret moves inside the text first');
+  assert.ok(ar.includes('qbaseArrowNav(host, node, e, rows.indexOf('), 'and the cell routes through the pure target');
+  assert.ok(fnBody(_src, 'qbaseArrowNav').includes('qbaseArrowTarget(e.key, i, c, nRows,'), 'the nav calls the core');
+  assert.ok(fnBody(_src, 'mtWireQBaseSort').includes('qbaseArrowNav(host, node, e, -1, c)'), 'the header is row -1');
+  assert.ok(fnBody(_src, 'qbaseFocusAt').includes('mtFocusCell(node, +tr.dataset.r, c)'), 'landing re-asserts after a rebuild (#1468)');
+  const edges = between(ed, 'if (next) next.focus();', "host.addEventListener('focusout'");
+  assert.ok(edges.includes('else if (e.shiftKey) qbaseFocusAt(host, node, -1,'), 'Shift+Tab / Shift+Enter past the top reach the header');
+  assert.ok(edges.includes("else if (e.key === 'Enter') { cell.blur(); cell.focus(); }"), 'Enter on the last row keeps its place');
+  assert.ok(!/else cell\.blur\(\);/.test(edges), 'no edge blurs to <body>');
+  assert.ok(fnBody(_src, 'qbaseRenameCommit').includes('qbaseRepaintSource(src);'), 'a rename repaints the point\'s row');
+  const rs = fnBody(_src, 'qbaseRepaintSource');
+  assert.ok(rs.includes('repaintNodeContent(src)') && rs.includes('refreshRowChrome(id)'), 'its text and the props row outside it');
+  const fo = between(ed, "host.addEventListener('focusout'", 'mtWireQBaseArrows(host, node);');
+  assert.ok(/markDirty\(\);\s*qbaseRepaintSource\(src\);/.test(fo), 'a property commit repaints the point\'s row');
 });
 
 // ─── untrusted-file hardening: a shared OPML's sidecar records are attacker-shaped ───────────────
