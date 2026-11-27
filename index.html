@@ -3563,6 +3563,7 @@ function textForDisplay(node) {
 // NOT applied to the depth > 0 arm - that is a link inside a title being read for its words, not a
 // link occupying a slot in the exported sentence.
 const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
+const LINK_HIDDEN_TEXT = 'a point not in this export';   // #1698: an excluded target, named in an export
 // #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
 // means. Omitted, it is the open document, which is right for every same-doc caller and was the
 // only behaviour there used to be. It is wrong for a title read out of `workspaceIndex.titles`:
@@ -3574,7 +3575,9 @@ const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
 // is same-document to THAT document, so the resolver is anchored on its docId, not on ours"
 // (#1110). This is that rule, in the shared helper, so a caller cannot forget it.
 // A QUALIFIED `[[doc#id]]` names its own document and was always correct; only the bare form moved.
-function linkText(str, depth = 0, emit, homeDocId) {
+// `hide` (#1698): ids in the OPEN document whose title an export must not print (noexportIds). Only
+// a caption-less link reads the title, so an explicit label still wins; the recursion carries it.
+function linkText(str, depth = 0, emit, homeDocId, hide) {
   if (!str || str.indexOf('[[') === -1) return str;
   const out = emit || ((text) => text);
   const home = homeDocId == null ? (root.docId || '') : homeDocId;
@@ -3595,11 +3598,12 @@ function linkText(str, depth = 0, emit, homeDocId) {
     if (depth > LINK_RESOLVE_DEPTH) return '';
     const owner = docId || home;                               // #1528: a bare id belongs to the string's home doc
     if (owner === (root.docId || '')) {                        // the OPEN document: live title
+      if (hide && hide.has(id)) return out(LINK_HIDDEN_TEXT, docId || '', id);
       const tn = nodeById(id);
-      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);
+      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner, hide) || id, docId || '', id);
     } else {                                                   // another document: workspace index
       const title = workspaceIndex?.titles?.get(owner)?.get(id);
-      if (title) return out(linkText(title, depth + 1, undefined, owner) || id, docId, id);
+      if (title) return out(linkText(title, depth + 1, undefined, owner, hide) || id, docId, id);
     }
     return out(id, docId || '', id);                           // unresolvable → bare id (better than the raw token)
   });
@@ -4540,6 +4544,14 @@ function propExprValue(raw, vars = {}) {
   const v = evalMath(s, vars);
   return (v !== null && Number.isFinite(v)) ? v : null;
 }
+// #1699: the value a property SHOWS as computed: propExprValue, except under a reserved key whose
+// value is a date, alias list or repeat phrase (`when: 10/12/2024` is a date, not 10 / 12 / 2024).
+// One home for the exemption, so the chip and the CSV export cannot disagree. Pure.
+function propFormulaValue(key, raw, vars = {}) {
+  const k = String(key || '').trim().toLowerCase();
+  if (DATE_KEYS.has(k) || k === 'when' || k === 'date' || k === ALIAS_KEY || k === REPEAT_KEY) return null;
+  return propExprValue(raw, vars);
+}
 // #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
 // 8:45 is 8.75 and compares to an 11-hour limit directly. Minutes and seconds are two digits 00-59
 // (ISO 8601, HTML time strings); hours may pass 24, as a spreadsheet's [h]:mm does. A VALUE reader
@@ -4964,8 +4976,8 @@ function reduceAgg(fn, vals) {
   if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
   if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
   if (!vals.length) return 0;
-  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (fn === 'sum') return snappedSum(vals);   // #1694
+  if (fn === 'avg') return snappedSum(vals) / vals.length;
   return 0;
 }
 function aggregateChildren(node, fn, prop, depth = 1) {
@@ -9980,13 +9992,15 @@ function mathReasonPhrase(why, expr) {
 // consumers: Calculate (which has always parsed cells this way) and Sort (which had no
 // numeric reading at all, so the same column summed to 212 and ordered 10, 100, 3, 99 —
 // two commands in one menu with two answers about what the column IS). Returns a number,
-// or null when the cell holds none. Lifted out of computeTable unchanged, parseFloat and
-// isNaN included, so Calculate's answers are byte-identical to what they were.
+// or null when the cell holds none. parseFloat and isNaN, as computeTable always read cells.
+// #1693: a grouped or currency cell ("1,000", "$5") is first reduced the way an imported
+// cell is, so it reads as the number it shows, as propScalar reads the same value as a
+// property. parseFloat alone read "1,000" as 1 and "$5" as nothing: silent wrong totals.
 function cellNum(raw) {
   const s = (raw == null ? '' : String(raw)).trim();
   if (s === '') return null;
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading, moved not rewritten
+  const n = parseFloat(importCellValue(s));
+  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading
 }
 // Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
 // numeric comparison on. Deliberately all-or-nothing: one word in the column and the
@@ -10071,7 +10085,7 @@ function computeTable(model, tblfm, vars = {}) {
   }
 
   function aggregate(fn, vals) {
-    const sum = vals.reduce((a, b) => a + b, 0);
+    const sum = snappedSum(vals);   // #1694
     if (fn === 'vsum') return sum;
     if (fn === 'vcount') return vals.length;
     if (fn === 'vmean') return vals.length ? sum / vals.length : 0;
@@ -10118,7 +10132,7 @@ function computeTable(model, tblfm, vars = {}) {
       } else if (v === ERR_UP) {
         disp = '#ERR (another cell)';
       } else {
-        disp = formatMathResult(v);
+        disp = formatCellValue(v);   // #1694: persisted, so never the 8 s.f. display cut
       }
     } catch (e) {
       if (e && e.message === 'CYCLE') disp = '#ERR (loops on itself)';
@@ -10273,14 +10287,16 @@ function renderStaticTable(block, l0, l1) {
   if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base"><i class="fa-solid fa-table-cells"></i> base</button>';
   // WAVE-2 HARD-9: a computed #ERR cell renders as plain text, not a live #ERR hashtag (see mtInline).
   const cellMd = (raw) => /^#ERR\b/.test(String(raw || '').trim()) ? escHtml(raw) : mdInline(raw || '');
+  // #1694: a computed cell holds full precision; painting rounds it like every other number
+  const paint = (key, raw) => computed.has(key) && /^-?[\d.]+(e[-+]?\d+)?$/i.test(String(raw || '').trim()) ? escHtml(formatMathResult(+raw)) : cellMd(raw);
   h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
   for (let c = 0; c < nc; c++)
-    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${cellMd(rows[0] && rows[0][c])}</th>`;
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${paint('0,' + c, rows[0] && rows[0][c])}</th>`;
   h += '</tr>';
   for (let r = 1; r < rows.length; r++) {
     h += '<tr>';
     for (let c = 0; c < nc; c++)
-      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${cellMd(rows[r] && rows[r][c])}</td>`;
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${paint(r + ',' + c, rows[r] && rows[r][c])}</td>`;
     h += '</tr>';
   }
   return h + '</table></div></div>';
@@ -10387,9 +10403,29 @@ ${(r.children.forEach(c=>nx(c,2)), out.join('\n'))}
 //
 // Shallow per node ({...n}) so the sidecar arrays are shared by reference: toOpml only reads them
 // (JSON.stringify), so a deep copy would buy nothing and cost a full traversal of every artifact.
+//
+// #1698: the doc-level footnote store rides in the head, so a footnote cited ONLY by excluded points
+// went out with the copy. It is dropped here; one no point cites at all (an orphan) is not about the
+// exclusion and stays, so a document with nothing excluded serializes exactly as before.
 function pruneNoexport(r) {
   const keep = n => n.noexport ? null : { ...n, children: (n.children || []).map(keep).filter(Boolean) };
-  return { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+  const p = { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+  if (Array.isArray(r.footnotes)) {
+    const cited = t => new Set(footnoteReport(t).filter(f => f.refCount).map(f => f.id));
+    const before = cited(r), after = cited(p);
+    p.footnotes = r.footnotes.filter(f => !before.has(f.id) || after.has(f.id));
+  }
+  return p;
+}
+
+// #1698: the ids of every point inside an excluded subtree. The prose exports resolve a link with an
+// empty label to its target's live TITLE, so a kept point linking to an excluded one printed the
+// excluded title; linkText takes this set and names such a target neutrally instead.
+function noexportIds(rootNode) {
+  const ids = new Set();
+  const all = n => { ids.add(n.id); (n.children || []).forEach(all); };
+  (function walk(n) { for (const c of (n.children || [])) c.noexport ? all(c) : walk(c); })(rootNode || {});
+  return ids;
 }
 
 // What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
@@ -10411,7 +10447,7 @@ function exportExclusionImpact(full, pruned) {
   (function walk(n) {
     for (const c of (n.children || [])) { if (c.noexport) excluded += size(c); else walk(c); }
   })(full);
-  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 };
+  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], lostFootnotes: 0, newBroken: 0 };
   const gone = (a, b) => Object.keys(a).filter(k => !(k in b));
   // Variables and rules fail LOUDLY in the copy (the .brace-attempt cue). A sequence degrades
   // QUIETLY instead: a kept point whose leading #BLOCKED keyword no longer belongs to any
@@ -10426,7 +10462,8 @@ function exportExclusionImpact(full, pruned) {
   const afterSeq = seqNames(pruned);
   const lostSeqs = [...seqNames(full)].filter(n => !afterSeq.has(n));
   const brokenCount = t => (collectLinks(t).broken || []).length;   // broken is an ARRAY of target ids
-  return { excluded, lostVars, lostRules, lostSeqs, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
+  const lostFootnotes = ((full.footnotes || []).length) - ((pruned.footnotes || []).length);   // #1698: pruneNoexport drops these
+  return { excluded, lostVars, lostRules, lostSeqs, lostFootnotes, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
 }
 
 // Encode newlines/tabs/CRs as numeric character references — XML attribute-value
@@ -12580,7 +12617,7 @@ function mtPatchCells(node, exceptCell, onlyTokenCells = false) {
 // `nid` is the one caller-supplied value and arrives ALREADY ESCAPED, because CSS.escape is a DOM API
 // and does not belong in a pure core.
 const BASE_VIEW_KINDS = ['table', 'board', 'cards', 'calendar'];
-const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more'];
+const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more', 'mt-qbase-head'];   // #1705: the query strip's editor door
 const BASE_CARD_CLASSES = ['bv-card', 'gv-card'];
 function baseRefocusSelector(d) {
   if (!d) return null;
@@ -13836,7 +13873,10 @@ function mtWireQBaseEdit(host, node) {
     }
     if (next) next.focus();
     else if (e.key === 'Tab' && !e.shiftKey && qbaseListScoped(node.qbase)) qbaseAddRow(node);
-    else cell.blur();
+    // #1704: past the top, Shift+Tab / Shift+Enter reach the header, as in an authored grid
+    else if (e.shiftKey) qbaseFocusAt(host, node, -1, e.key === 'Tab' ? host.querySelectorAll('.mt-qsort').length - 1 : +cell.dataset.c);
+    else if (e.key === 'Enter') { cell.blur(); cell.focus(); }   // last row: commit, keep your place (an authored grid stops)
+    else navigateToNext(node.id);   // Tab past a search base's last cell leaves it for the next point
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
@@ -13870,6 +13910,7 @@ function mtWireQBaseEdit(host, node) {
     if (route === 'date') setDateProp(src, field.trim().toLowerCase(), raw);
     else setProp(src, field, raw);
     markDirty();
+    qbaseRepaintSource(src);   // #1704: the outline row too, even while focus stays in the grid
     // Repaint from what was STORED, not what was typed: setDateProp resolves a relative form, so
     // `today+7` must show as the date it landed on rather than leaving the cell disagreeing with
     // the model until the next full render.
@@ -13884,6 +13925,7 @@ function mtWireQBaseEdit(host, node) {
     // synchronous render inside focusout; it would steal the next-clicked cell's focus).
     scheduleVarBaseRender(host);
   });
+  mtWireQBaseArrows(host, node);   // #1704: the grid's arrow grammar (the readOnly build skips mtWireCells)
   if (qbaseListScoped(node.qbase)) mtWireQBaseRows(host, node);
 }
 
@@ -13896,6 +13938,13 @@ function mtWireQBaseEdit(host, node) {
 function qbaseTitleHtml(nid) {
   const src = nid && nodeById(nid);
   return escHtml(src ? stripCaptionTags(displayText(src)) : '');
+}
+// #1704: a cell commit repaints the point's outline row on the spot, its text AND the chrome outside
+// it (the due chip lives in .node-props-row), the way exitEdit does. The deferred full render below
+// skips while focus stays in the grid, which is what left the row stale.
+function qbaseRepaintSource(src) {
+  repaintNodeContent(src);
+  for (const id of affordanceDirtyIds(src, parentOf(src.id) || null)) refreshRowChrome(id);
 }
 function qbaseRowLabel(src) { return (src && displayText(src) || '(untitled)').slice(0, 40); }
 function qbaseRenameCommit(host, node, cell, nid, raw, was, srcText) {
@@ -13913,6 +13962,7 @@ function qbaseRenameCommit(host, node, cell, nid, raw, was, srcText) {
   promoteInlineShorthand(src);   // a {...} typed into the name becomes its pill, as in the outline
   markDirty();
   repaint();
+  qbaseRepaintSource(src);   // #1704: its outline row now, not when focus next leaves the table
   flashHint(raw ? `Renamed "${old}" to "${qbaseRowLabel(src)}". Undo puts the old name back.`
                 : `Cleared the name of "${old}". Undo puts it back.`);
   scheduleVarBaseRender(host);
@@ -14016,9 +14066,49 @@ function mtWireQBaseSort(host, node) {
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, false);
     });
     b.addEventListener('keydown', e => {
+      if (e.key.startsWith('Arrow')) { qbaseArrowNav(host, node, e, -1, c); return; }   // #1704
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);
     });
+  });
+}
+// #1704: where an arrow key moves in a query base's grid, the authored grid's grammar (P1). Rows
+// are body rows in display order, i === -1 being the sort header. Returns {i, c}, 'prev'/'next'
+// (leave the base to the adjacent point, as an authored base does at its edges), or null (stay).
+function qbaseArrowTarget(key, i, c, nRows, nCols) {
+  if (key === 'ArrowUp')    return i > 0 ? { i: i - 1, c } : i === 0 ? { i: -1, c } : 'prev';
+  if (key === 'ArrowDown')  return i < nRows - 1 ? { i: i + 1, c } : 'next';
+  if (key === 'ArrowLeft')  return c > 0 ? { i, c: c - 1 } : null;
+  if (key === 'ArrowRight') return c < nCols - 1 ? { i, c: c + 1 } : null;
+  return null;
+}
+function qbaseFocusAt(host, node, i, c) {
+  if (i < 0) { const h = host.querySelector(`.mt-qsort[data-c="${c}"]`); h?.focus(); return !!h; }
+  const tr = host.querySelectorAll('tr[data-r]:not(.mt-headrow)')[i];
+  return !!tr && mtFocusCell(node, +tr.dataset.r, c);   // its rAF re-assert covers a rebuild on commit (#1468)
+}
+function qbaseArrowNav(host, node, e, i, c) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const nRows = host.querySelectorAll('tr[data-r]:not(.mt-headrow)').length;
+  const t = qbaseArrowTarget(e.key, i, c, nRows, host.querySelectorAll('.mt-qsort').length);
+  e.preventDefault(); e.stopPropagation();
+  if (t === 'prev') navigateToPrev(node.id);
+  else if (t === 'next') navigateToNext(node.id);
+  else if (t) qbaseFocusAt(host, node, t.i, t.c);
+}
+// Arrows from a body cell: the caret moves inside the text first, as in an authored cell.
+function mtWireQBaseArrows(host, node) {
+  host.addEventListener('keydown', e => {
+    if (!e.key.startsWith('Arrow') || e.defaultPrevented) return;
+    const cell = e.target.closest('tr[data-r]:not(.mt-headrow) td.mt-cell'); if (!cell) return;
+    const sel = window.getSelection();
+    const nav = !cell.isContentEditable || (mtNavSel === cell && !sel?.isCollapsed);
+    const len = cell.textContent?.length ?? 0;
+    const edge = nav || (e.key === 'ArrowUp' ? isAtFirstLine(cell) : e.key === 'ArrowDown' ? isAtLastLine(cell)
+      : sel?.isCollapsed && getCaretOffset(cell) === (e.key === 'ArrowLeft' ? 0 : len));
+    if (!edge) return;
+    const rows = [...host.querySelectorAll('tr[data-r]:not(.mt-headrow)')];
+    qbaseArrowNav(host, node, e, rows.indexOf(cell.closest('tr')), +cell.dataset.c);
   });
 }
 function qbaseSortByHeader(node, col, refocus) {
@@ -15679,8 +15769,8 @@ function buildPropsArea(node) {
     }
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
-    if (!DATE_KEYS.has(propK) && propK !== 'when' && propK !== 'date' && propK !== ALIAS_KEY && propK !== REPEAT_KEY) {
-      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row
+    {
+      const ev = propFormulaValue(propK, val, rowPropVars(node));   // #1656: a row formula reads its own row
       if (ev !== null) { displayVal = formatNumDisplay(ev, null); chip.classList.add('prop-computed'); chip.title = `${val} = ${displayVal}. Click to edit`; chip.setAttribute('aria-label', `${key}: ${displayVal} (from ${val}). Click to edit properties`); }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -26497,7 +26587,29 @@ function closeIo() {
   ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs
   _welcomeOpen = false;   // #1192: whatever closed it, the Welcome chooser is no longer on the card
   const ret = ioReturnFocus; ioReturnFocus = null;
-  if (ret) try { ret.focus(); } catch (_) {}
+  if (!ret) return;
+  try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  // #1705: a commit that renders AFTER closing detaches the target again; follow it one frame on.
+  requestAnimationFrame(() => {
+    if (document.activeElement === document.body) try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  });
+}
+// #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
+// commit re-rendered (render() for a point, refreshTable() for a base widget) and replaced it with a
+// twin. Focusing the detached original does nothing and the caret ends on <body>; dismiss never
+// re-renders, which is why Escape kept the caret and Save, Enter and Create did not. Pure: `find`
+// maps a detached element to its live twin, or null, and a target with no twin is left as it was.
+function liveReturnTarget(el, find) {
+  if (!el || el.isConnected !== false) return el;
+  return find(el) || el;
+}
+// The DOM half: a point by its data-id, a base control by the stable key refreshTable already uses.
+function returnTwin(el) {
+  if (el.classList.contains('node-content') && el.dataset.id)
+    return document.querySelector(`.node-content[data-id="${CSS.escape(el.dataset.id)}"]`);
+  const host = el.closest('.md-table-host[data-id]');
+  const sel = host && baseRefocusSelector(baseFocusDescriptor(el));
+  return sel ? document.querySelector(`.md-table-host[data-id="${CSS.escape(host.dataset.id)}"] ${sel}`) : null;
 }
 // Close the builder window after a nested dialog submits. Clears builder state,
 // dialog globals, ioCard, and the overlay scrim.
@@ -31298,7 +31410,7 @@ function daysInMonthOf(y, m, cal) {   // days in month m of intrinsic year y
 }
 const FN1 = Object.assign(Object.create(null), {
   sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
-  round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  round: Math.round, sin: x => noiseSnap(Math.sin(x), x), cos: x => noiseSnap(Math.cos(x), x), tan: x => noiseSnap(Math.tan(x), x),   // #1694: sin(pi) is 0
   asin: Math.asin, acos: Math.acos, atan: Math.atan,
   ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
   exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
@@ -31655,6 +31767,9 @@ function evalMath(input, vars = {}) {
   // open across midnight (or a doc opened the next day without reload) stays current.
   // The static tables (MATH_CONSTS/FN1/FN2/FN3) are hoisted to module scope above.
   const _today = dueDateToday();
+  // if() and ?: share this: a NaN condition is no verdict (→ the final isNaN gate → null), as cmp()
+  // and and()/or()/not() refuse a NaN operand, instead of silently taking the else branch (#1696).
+  const pick = (cond, thenV, elseV) => isNaN(cond) ? NaN : cond ? thenV : elseV;
 
   function ident() {
     let name = '';
@@ -31693,7 +31808,7 @@ function evalMath(input, vars = {}) {
       expect(',');
       const elseV = ternary();
       expect(')');
-      return cond ? thenV : elseV;
+      return pick(cond, thenV, elseV);
     }
     if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'avg' || name === 'and' || name === 'or') {
       expect('(');
@@ -31715,7 +31830,7 @@ function evalMath(input, vars = {}) {
       // bare-identifier child rollup avg(prop) (substituted before evalMath by expandAggExpr) is
       // untouched — avg(2, 4) is the numeric mean, avg(cost) stays the aggregation.
       if (name === 'min' || name === 'max' || name === 'avg')
-        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : args.reduce((s, a) => s + a, 0) / args.length;
+        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : snappedSum(args) / args.length;
       // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
       // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
       // A NaN operand propagates (→ the final isNaN gate → null) so a failed
@@ -31761,7 +31876,8 @@ function evalMath(input, vars = {}) {
       const op = peek();
       if (op !== '+' && op !== '-') break;
       eat();
-      v = op === '+' ? v + mulDiv() : v - mulDiv();
+      const w = mulDiv();
+      v = noiseSnap(op === '+' ? v + w : v - w, Math.max(Math.abs(v), Math.abs(w)));   // #1694
     }
     return v;
   }
@@ -31797,7 +31913,7 @@ function evalMath(input, vars = {}) {
     const thenV = ternary();
     expect(':');
     const elseV = ternary();
-    return cond ? thenV : elseV;
+    return pick(cond, thenV, elseV);
   }
 
   try {
@@ -31881,19 +31997,34 @@ function formatMathDisplay(v, expr, fmt) {
     : formatNumDisplay(v, fmt);
 }
 
+// #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+// absolute size at display (that printed Planck's 6.626e-34 as 0). A result under 1e-12 of its
+// operands' scale is cancellation dust (0.1+0.2-0.3, sin(pi)); 1e-12 is the 12 s.f. the comparison
+// snap in evalMath uses, so a pill and a comparison agree on what is zero.
+function noiseSnap(r, scale) {
+  return isFinite(scale) && Math.abs(r) <= 1e-12 * Math.abs(scale) ? 0 : r;
+}
+function snappedSum(vals) {
+  return noiseSnap(vals.reduce((a, b) => a + b, 0), vals.reduce((a, b) => a + Math.abs(b), 0));
+}
+
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
   // An exact integer prints in full — never round-trip it through toPrecision(10),
   // which truncates the low digits of an integer with >10 significant figures
-  // (123456789012 → 123456789000). This value is persisted into node.text by table
-  // recompute, so the corruption would be saved, not just displayed.
+  // (123456789012 → 123456789000).
   if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
   // Round to 10 significant figures to wash out floating-point noise
   const r = parseFloat(n.toPrecision(10));
-  // Snap near-zero results (e.g. sin(π) ≈ 1.2e-16 → 0)
-  if (Math.abs(r) < 1e-10 && Math.abs(n) <= 1) return '0';
   if (Number.isInteger(r) && Math.abs(r) < 1e15) return String(r);
   return parseFloat(n.toPrecision(8)).toString();
+}
+// #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
+// default (#1333) and cut a saved 1234567.89 to 1234567.9; 15 s.f. is every digit a double holds
+// reliably, so any decimal a user can type survives while 0.1+0.2 still saves as 0.3.
+function formatCellValue(n) {
+  if (!isFinite(n)) return formatMathResult(n);
+  return Number.isInteger(n) && Math.abs(n) < 1e15 ? String(n) : String(parseFloat(n.toPrecision(15)));
 }
 
 // #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
@@ -37000,6 +37131,7 @@ function undo() {
 }
 
 function redo() {
+  flushActiveTextEdit();   // #1702: record fresh typing first, which ends the redo branch
   if (!redoStack.length) return;
   applyEntry(redoStack.pop(), undoStack, 'next');
 }
@@ -37249,7 +37381,9 @@ async function newFile() {
     validate: () => true,   // blank is fine → falls back to a default name
     onSubmit: async v => {
       const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
+      ioReturnFocus = null;   // #1705: the File button belongs to the old document; the new one starts in its first point
       await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });
+      if (!IS_TOUCH && flatRows.length) focusNode(flatRows[0].node.id);   // as dismissWelcome does
     },
   });
 }
@@ -39231,7 +39365,10 @@ function toMarkdown(rootNode) {
     return (nm ? String(nm).replace(/\.opml$/i, '') : docId) + '.md';
   };
   const mdLink = (text, docId, id) => mdLinkOut(text, id, docFileOf(docId));
-  const lt = (str) => linkText(str, 0, mdLink);
+  // #1698: never print an excluded point's title. From the LIVE root, not rootNode: linkText resolves
+  // titles in the open document, and a selection export passes only the selected points.
+  const hide = noexportIds(root);
+  const lt = (str) => linkText(str, 0, mdLink, undefined, hide);
   // never a leading blank line, and never two in a row
   const sep = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
   function emit(node, depth, ordinal) {
@@ -39468,21 +39605,28 @@ function importCellValue(v) {
 function importKeyName(h) {
   return String(h == null ? '' : h).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
-// Split one delimited line. Tab-separated is a plain split (Excel/Sheets clipboard is TSV and never
-// quotes); comma-separated is quote-aware so a "a, b" cell survives, matching how sheets export CSV.
-function importSplitRow(line, delim) {
-  if (delim === '\t') return String(line).split('\t').map(c => c.trim());
-  const out = []; let cur = '', q = false;
-  const s = String(line);
+// #1700: read delimited text into rows, RFC 4180 style. A cell that OPENS with a quote may hold the
+// delimiter, a doubled quote ("" = one ") or a newline, so our own CSV export and Excel's TSV clipboard
+// (both quote a multi-line cell) read back as one cell, not two points. Quotes elsewhere are literal
+// (5" pipe). Blank lines are dropped, as before. Pure.
+function importSplitRows(text, delim) {
+  const s = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  const rows = []; let row = [], cur = '', q = false;
+  const cell = () => { row.push(cur.trim()); cur = ''; };
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (q) { if (ch === '"') { if (s[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === ',') { out.push(cur.trim()); cur = ''; }
+    else if (ch === '"' && !cur.trim()) { cur = ''; q = true; }
+    else if (ch === delim) cell();
+    else if (ch === '\n') { cell(); rows.push(row); row = []; }
     else cur += ch;
   }
-  out.push(cur.trim());
-  return out;
+  cell(); rows.push(row);
+  return rows.filter(r => r.length > 1 || r[0]);
+}
+// One delimited line (the first row of it).
+function importSplitRow(line, delim) {
+  return importSplitRows(line, delim)[0] || [''];
 }
 // Does this text look like a delimited table? Returns the delimiter ('\t' or ',') or null. Strict on
 // purpose: 2+ non-blank lines, 2+ columns, and a column count the FIRST row shares with all but at
@@ -39490,12 +39634,16 @@ function importSplitRow(line, delim) {
 // (a paste with tabs is unambiguously a sheet). Runs only inside the Import dialog, after the OPML
 // sniff and BEFORE Markdown, so a `#`/`-`/`|` Markdown doc (1 column under these delimiters) is untouched.
 function sniffDelimited(text) {
-  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) return null;
   for (const delim of ['\t', ',']) {
-    const counts = lines.map(l => importSplitRow(l, delim).length);
+    const rows = importSplitRows(text, delim);
+    if (rows.length < 2) continue;
+    // #1700: two rows of two cells is rectangular by accident for prose ("Dear Bob, thanks for lunch").
+    // With one data row, a comma table must not read as sentences: no cell of 3+ words or ending . ! ?
+    // A cell that opens with a quote is CSV evidence prose lacks (our own export quotes), so it waives this.
+    if (delim === ',' && rows.length === 2 && !/(^|,)\s*"/m.test(String(text)) && rows.flat().some(c => /\S\s+\S+\s+\S/.test(c) || /[.!?]$/.test(c))) continue;
+    const counts = rows.map(r => r.length);
     const cols = counts[0];
-    if (cols >= 2 && counts.filter(c => c === cols).length >= Math.max(2, lines.length - 1)) return delim;
+    if (cols >= 2 && counts.filter(c => c === cols).length >= Math.max(2, rows.length - 1)) return delim;
   }
   return null;
 }
@@ -39505,9 +39653,8 @@ function sniffDelimited(text) {
 // columns thus become number properties a + Total / check reads. Returns { points, skipped } to match
 // markdownToPoints so it rides the same appendOpmlSubtrees path. delim from sniffDelimited.
 function tableToPoints(text, delim) {
-  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) return { points: [], skipped: [] };
-  const rows = lines.map(l => importSplitRow(l, delim));
+  const rows = importSplitRows(text, delim);
+  if (rows.length < 2) return { points: [], skipped: [] };
   const ncol = rows[0].length;
   const used = new Set();
   const keys = rows[0].map((h, i) => {
@@ -39520,11 +39667,18 @@ function tableToPoints(text, delim) {
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
     let t = (cells[0] || '').trim() || ('Row ' + r);
+    const direct = [];
     for (let c = 1; c < ncol; c++) {
       const v = importCellValue(cells[c] || '');
-      if (v !== '') t += ' {prop ' + keys[c] + ': ' + v + '}';
+      if (v === '') continue;
+      // #1700: a brace in the value would close (x}y) or unbalance the {prop} token, so write the prop
+      // the token would have promoted to, through the same propDeclParts gate. A reserved key keeps the token.
+      const pd = /[{}]/.test(v) && propDeclParts('prop ' + keys[c] + ': ' + v);
+      if (pd) direct.push(pd); else t += ' {prop ' + keys[c] + ': ' + v + '}';
     }
-    heading.children.push(mkNode(t, 'ul'));
+    const pt = mkNode(t, 'ul');
+    for (const pd of direct) setProp(pt, pd.key, pd.val);
+    heading.children.push(pt);
   }
   return heading.children.length ? { points: [heading], skipped: [] } : { points: [], skipped: [] };
 }
@@ -39535,7 +39689,10 @@ function tableToPoints(text, delim) {
 // point, values frozen. The exact inverse of importSplitRow, so an exported file round-trips back
 // through the paste importer. Pure string builders, Node-testable.
 function csvCell(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  // #1699: OWASP CSV injection guard. A cell a spreadsheet would read as a formula gets a leading ',
+  // so a shared document's `=HYPERLINK(...)` title stays text. A plain number (-5, +3) is left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;   // quote + double-up, like sheet CSV
 }
 function rowsToCsv(rows) {
@@ -39559,7 +39716,7 @@ function sectionToCsvRows(node, states) {
     const val = k => {
       const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase());
       if (!p) return '';
-      const ev = propExprValue(p.val, rowPropVars(c));   // #1317/#1656: freeze a formula property to its computed value in the CSV
+      const ev = propFormulaValue(k, p.val, rowPropVars(c));   // #1317/#1656/#1699: freeze a formula to its value, as the chip shows it
       return ev !== null ? String(ev) : p.val;
     };
     rows.push([auditTitle(c.text), ...keys.map(val)]);
@@ -39844,7 +40001,7 @@ function checkVerdictHtml(v) {
   if (v === 'error') return ' <span class="ro-chk ro-err" title="check cannot be evaluated">⚠</span>';
   return '';
 }
-function nodeToReadonlyHtml(node, varMap) {
+function nodeToReadonlyHtml(node, varMap, hide) {
   if (!node || node.noexport) return '';
   const type = deriveTypeFromText(node.text) || node.type || 'ul';
   // Same two-step the Markdown export uses so the two never diverge: pills → their shown values, then
@@ -39854,7 +40011,8 @@ function nodeToReadonlyHtml(node, varMap) {
   // frozenTokenText emits result-only for a `para`, so present a para-typed VIEW of the node (its pill
   // sidecars are shared by reference, so every pill still resolves) to force clean values for any type.
   const proseView = node.type === 'para' ? node : { ...node, type: 'para' };
-  const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, (t, _d, id) => mdLinkOut(t, id, ''));
+  const roLink = (t, _d, id) => mdLinkOut(t, id, '');
+  const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, roLink, undefined, hide);
   // #1493: a code block is a BLOCK, and this page is what a reader gets. It used to fall through to
   // the paragraph path, so the literal ``` fence and any language token shipped as body text inside
   // a <div> — not monospaced, and with the line breaks collapsed by HTML. Same reader as the app
@@ -39867,9 +40025,10 @@ function nodeToReadonlyHtml(node, varMap) {
   } else inner = mdToHtml(flat, false);
   const chk = checkExprOf(node);
   if (chk) inner += checkVerdictHtml(evalCheck(node, varMap));
-  if (node.note) inner += '<div class="ro-note">' + mdToHtml(node.note) + '</div>';
+  // #1698: the note takes the body's link step too; mdToHtml alone drew a link as its live title.
+  if (node.note) inner += '<div class="ro-note">' + mdToHtml(linkText(node.note, 0, roLink, undefined, hide)) + '</div>';
   let kids = '';
-  for (const c of node.children || []) kids += nodeToReadonlyHtml(c, varMap);
+  for (const c of node.children || []) kids += nodeToReadonlyHtml(c, varMap, hide);
   if (kids) kids = '<div class="ro-kids">' + kids + '</div>';
   return '<div class="ro-pt">' + inner + kids + '</div>';
 }
@@ -39899,7 +40058,8 @@ const RO_EXPORT_CSS =
 function docToReadonlyHtml(rootNode) {
   const varMap = collectVars(rootNode);
   const title = escHtml(readonlyDocTitle(rootNode));
-  const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap)).join('');
+  const hide = noexportIds(root);   // #1698: a link to an excluded point never prints its title (live root, as in toMarkdown)
+  const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap, hide)).join('');
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<title>' + title + '</title><style>' + RO_EXPORT_CSS + '</style></head>' +
@@ -39914,21 +40074,23 @@ function toPlainText(rootNode) {
   const fnStore = (rootNode && rootNode.footnotes) || [];   // Phase A: doc-level footnote store
   const fnOrder = footnoteOrder(rootNode);                  // id -> document-order number
   const fnEmitted = new Set();                              // a reused footnote defines once, at first reference
+  const hide = noexportIds(root);                           // #1698: the live root, as in toMarkdown
+  const lt = (str) => linkText(str, 0, undefined, undefined, hide);
   function emit(node, depth) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
+      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
-      const dlabel = stripInlineMd(linkText(textForDisplay(node)));
+      const dlabel = stripInlineMd(lt(textForDisplay(node)));
       if (dlabel) out.push(`${indent}${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
       // UXP-237: both toPlainText branches strip unwritten markers, or the plain-text export is
       // only half fixed (a base point takes the branch above).
-      let body = renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + numbers
+      let body = renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + numbers
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
@@ -39937,15 +40099,15 @@ function toPlainText(rootNode) {
     // the point's note: continuation lines indented under the item
     // #1111: these four sinks bypassed the link chain, so a link written in a note, a property, a
     // divider label or a footnote shipped as a literal [[#id]] to the reader.
-    if (node.note) linkText(node.note).split('\n').forEach(l => out.push(`${indent}\t${l}`));
+    if (node.note) lt(node.note).split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // per-node properties as a single continuation line
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())); // #813
-    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${linkText(p.val)}`).join(' · ')}]`);
+    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${lt(p.val)}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node; Phase A: doc store, defined once
     getFnRefs(node.text).forEach(id => {
       if (fnEmitted.has(id)) return;
       const fn = fnStore.find(f => f.id === id);
-      if (fn && fn.text.trim()) { fnEmitted.add(id); out.push(`${indent}\t[^${fnOrder.get(id)}] ${stripInlineMd(linkText(fn.text)).replace(/\n+/g, ' ').trim()}`); }
+      if (fn && fn.text.trim()) { fnEmitted.add(id); out.push(`${indent}\t[^${fnOrder.get(id)}] ${stripInlineMd(lt(fn.text)).replace(/\n+/g, ' ').trim()}`); }
     });
     for (const c of node.children) emit(c, depth + 1);
   }
@@ -40081,7 +40243,10 @@ function exportSelfContainedHtml() {
   const links = impact.newBroken
     ? ` ${impact.newBroken} link${impact.newBroken === 1 ? '' : 's'} now point${impact.newBroken === 1 ? 's' : ''} at something the copy does not contain.`
     : '';
-  flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + links);
+  const fns = impact.lostFootnotes
+    ? ` ${impact.lostFootnotes} footnote${impact.lostFootnotes === 1 ? '' : 's'} cited only there ${impact.lostFootnotes === 1 ? 'is' : 'are'} left out too.`
+    : '';
+  flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + fns + links);
 }
 
 
@@ -44231,6 +44396,9 @@ function closeFileMenu() {
   // caret back into a point you'd long moved on from. Clearing here kills that ghost.
   chromeReturn = null;
 }
+// #1705: a row that ACTS and opens nothing (the exports) hands the caret back the way Escape does,
+// instead of leaving it on the File button the menu was opened from.
+function closeFileMenuToCaret() { const back = chromeReturn; closeFileMenu(); chromeReturn = back; restoreChromeReturn(); }
 // keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 // menu is a settings *dialog*, not a menu — rows are buttons; arrow-roving is a
 // convenience on top, not menu semantics.
@@ -44760,10 +44928,10 @@ document.getElementById('workspace-invite').addEventListener('click', () => {
     clipboardFailMessage('page'));   // #1585: the success only when the copy landed
   closeFileMenu();
 });
-document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
-document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
-document.getElementById('btn-export-share').addEventListener('click', () => { exportReadonlyHtml(); closeFileMenu(); });
-document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
+document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-share').addEventListener('click', () => { exportReadonlyHtml(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenuToCaret(); });
 document.getElementById('btn-guide').addEventListener('click', () => { closeFileMenu(); openGuide('shortcuts'); });
 
 // outline level control — collapse to first N levels / expand all

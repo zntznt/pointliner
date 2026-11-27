@@ -357,7 +357,9 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
 - **Exclude from export.** Flag a point (and its subtree) to skip every export format, Markdown,
   plain text, Shareable page and Web page alike, so scaffolding and planning notes stay out of a
   shared copy. Only the OPML save keeps it. Excluding a variable declaration is called out after a
-  Web page export, since that format stays live and recomputes.
+  Web page export, since that format stays live and recomputes. A footnote cited only by excluded
+  points stays out too, and a link to an excluded point exports as "a point not in this export"
+  unless you gave it a label.
   ([exporting](files-and-export.md#exporting-and-sharing))
 - **Shareable page (read-only).** Export a single static `.html` page anyone opens in any browser with
   no app, where every pill shows the value it had when you saved: a total is its number, a roll its
