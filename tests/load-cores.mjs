@@ -341,6 +341,7 @@ export function loadCores() {
     'parseSequence','seqDeclParts','ruleDeclParts','makeGrammarRoll','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','keywordIsHeld','seqDefString',
     'textBlockPrefix','unfoldTokensIn','artifactTokenRe','normStateKey','boardBlockReason','statusColWarning','baseStructMessage','colWidthLabel','mtColValueCount','mtRowValueCount','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal (#1401: and its now-shared unknown-values half), the slash pool
     'baseRefocusSelector',   // #1383: where focus goes back to after a base rebuild
+    'liveReturnTarget',      // #1705: a dialog's return target, followed to its re-rendered twin
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'pruneNoexport','exportExclusionImpact',
     'searchScopeSay','searchEmptySay',          // #1509: what a search says when the view is zoomed
