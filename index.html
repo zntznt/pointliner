@@ -9860,7 +9860,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   while ((m = re.exec(s)) !== null) {
     if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
     const id = m[0].toLowerCase();
-    if (MATH_CONST_NAMES.has(id)) continue;
+    if (MATH_CONST_NAMES.has(id) && !(id in vars)) continue;   // #1695: a declared variable shadows the constant
     if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
     if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
     // #952: a DISTRIBUTION variable is declared and correct — it just isn't a number. Without
@@ -31620,7 +31620,7 @@ function mathCompletions(prefix, vars) {
   for (const n of ['sum','avg','count']) pushFn(n, 'agg', n + '(prop)');       // child roll-ups (expandAggExpr)
   pushFn('words', 'agg', 'words(subtree)');
   for (const n of [...Object.keys(MATH_CONSTS), 'today']) {                    // today is dynamic, added by hand
-    if (seen.has(n) || !match(n)) continue; seen.add(n);
+    if (seen.has(n) || (vars && n in vars) || !match(n)) continue; seen.add(n);   // #1695: a declared variable shadows it, so offer the variable
     out.push({ name: n, group: 'const', insert: n, caretBack: 0, hint: 'constant', desc: MATH_FN_DESC[n], guide: 'math' });
   }
   for (const n of Object.keys(vars || {})) {                                   // a document variable (no fixed desc/guide — it's the user's own)
@@ -31783,8 +31783,10 @@ function evalMath(input, vars = {}) {
       name += eat();
       while (/[a-z0-9_]/.test(peek())) name += eat();
     }
-    if (name === 'today') return _today;            // dynamic — stays current per call
-    if (name in MATH_CONSTS) return MATH_CONSTS[name];
+    // #1695: a declared variable wins over a constant of the same name, as it already does in dice.
+    const isVar = peek() !== '(' && name in vars;
+    if (!isVar && name === 'today') return _today;            // dynamic — stays current per call
+    if (!isVar && name in MATH_CONSTS) return MATH_CONSTS[name];
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
