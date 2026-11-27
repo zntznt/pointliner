@@ -768,6 +768,15 @@ test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)
   assert.equal(c.evalMath('and(nope>1, 1)'), null);
 });
 
+test('evalMath — a NaN condition fails if() and ?: to null, never takes the else branch (#1696)', () => {
+  assert.equal(c.evalMath('if(log(-1), 10, 20)'), null);
+  assert.equal(c.evalMath('sqrt(-1) ? 1 : 2'), null);
+  // the untaken branch may be NaN: only the condition and the chosen branch decide
+  assert.equal(c.evalMath('if(1, 10, sqrt(-1))'), 10);
+  assert.equal(c.evalMath('0 ? sqrt(-1) : 2'), 2);
+  assert.equal(c.evalMath('if(0, 10, 20)'), 20);
+});
+
 test('evalCheck — a compound and(…) check passes the comparison gate and verdicts correctly (#539)', () => {
   const node = { text: 'x', props: [{ key: 'check', val: 'and(sum(cost) <= 10, count(cost) >= 2)' }],
     children: [

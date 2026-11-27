@@ -31654,6 +31654,9 @@ function evalMath(input, vars = {}) {
   // open across midnight (or a doc opened the next day without reload) stays current.
   // The static tables (MATH_CONSTS/FN1/FN2/FN3) are hoisted to module scope above.
   const _today = dueDateToday();
+  // if() and ?: share this: a NaN condition is no verdict (→ the final isNaN gate → null), as cmp()
+  // and and()/or()/not() refuse a NaN operand, instead of silently taking the else branch (#1696).
+  const pick = (cond, thenV, elseV) => isNaN(cond) ? NaN : cond ? thenV : elseV;
 
   function ident() {
     let name = '';
@@ -31692,7 +31695,7 @@ function evalMath(input, vars = {}) {
       expect(',');
       const elseV = ternary();
       expect(')');
-      return cond ? thenV : elseV;
+      return pick(cond, thenV, elseV);
     }
     if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'avg' || name === 'and' || name === 'or') {
       expect('(');
@@ -31796,7 +31799,7 @@ function evalMath(input, vars = {}) {
     const thenV = ternary();
     expect(':');
     const elseV = ternary();
-    return cond ? thenV : elseV;
+    return pick(cond, thenV, elseV);
   }
 
   try {
