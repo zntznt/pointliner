@@ -1834,7 +1834,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `simulateChance` — The share of a Monte-Carlo outcome array satisfying `value <op> t`, as a PERCENTAGE — the reducer
 - `SIM_MAX`
 - `SIM_WORK_MAX` — Work cap for one simulate(): trials x dice rolled per trial. rollParsed costs ~1 us a die, so
-- `simDiceCost` — Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+- `simDiceCost` — Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average (parseDice refuses an exploding d1).
 - `_simMemo` — simulate() results by call text + resolved terms: a pure function of its key, so no doc reset.
 - `hashSeedStr` — FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
 - `sampleGenerator` — Sample a generator N times → an outcome array (numbers for dice, strings otherwise). Uses the same
