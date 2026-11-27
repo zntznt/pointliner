@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2230 declarations in 158 sections across 17 domains.**
+**2234 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -738,6 +738,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `queryRowsMemo`
 - `QBASE_ROW_CAP`
 - `parseQBaseSort` — SV-2: parse the query editor's sort field against the column list. Blank -> null
+- `qbaseNextSort` — table-view-proposal.md slice 2: a press on a query base's column header is a second door onto
+- `qbaseAriaSort` — The header's aria-sort for column `col`: only the sorted column carries one (WAI-ARIA asks for
 - `isQueryBase`
 - `qbaseSourceText` — The strip's words for where a query base's rows come from: its search, or for a list's table view
 - `qbaseColList` — The rendered-column list: entries with a usable field, exactly as queryTableRows
@@ -840,6 +842,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mtSortRows`
 - `mtSortBase` — The one-shot sort door (saved-views-proposal SV-1): a DATA operation — the new order
 - `mtWireQBaseEdit` — QP-2 Phase C: write-through cells. A query base's plain-property cells edit the SOURCE
+- `mtWireQBaseSort` — Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
+- `qbaseSortByHeader`
 
 ## FR-1 per-role cell editors
 

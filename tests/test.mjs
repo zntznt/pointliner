@@ -40977,6 +40977,38 @@ test('table view: editQBase preserves every qbase config field (census)', () => 
   for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
 });
 
+// table-view-proposal.md slice 2: a query base's header is a second door onto qbase.sort. On main
+// the header was inert text and sorting meant typing "beds desc" into the editor.
+test('table view slice 2: a header press cycles ascending, descending, document order', () => {
+  let s = null;
+  s = c.qbaseNextSort(s, 1); assert.deepEqual(host(s), { col: 1, dir: 'asc' }, 'first press: ascending');
+  s = c.qbaseNextSort(s, 1); assert.deepEqual(host(s), { col: 1, dir: 'desc' }, 'second: descending');
+  s = c.qbaseNextSort(s, 1); assert.equal(s, null, 'third: back to document order');
+  assert.deepEqual(host(c.qbaseNextSort({ col: 1, dir: 'desc' }, 2)), { col: 2, dir: 'asc' },
+    'another column starts at ascending, whatever the old one was doing');
+  // the shape is exactly what parseQBaseSort writes, so the editor reads a header sort back
+  const cols = [{ name: 'Name', field: 'title' }, { name: 'beds', field: 'beds' }];
+  assert.deepEqual(host(c.qbaseNextSort(c.parseQBaseSort('beds', cols), 1)), host(c.parseQBaseSort('beds desc', cols)));
+  assert.equal(c.qbaseAriaSort({ col: 1, dir: 'asc' }, 1), 'ascending');
+  assert.equal(c.qbaseAriaSort({ col: 1, dir: 'desc' }, 1), 'descending');
+  assert.equal(c.qbaseAriaSort({ col: 1, dir: 'asc' }, 0), null, 'only the sorted header carries aria-sort');
+  assert.equal(c.qbaseAriaSort(null, 0), null);
+});
+
+test('table view slice 2: the header door is rendered, wired both ways, and writes qbase.sort', () => {
+  const tw = fnBody(_src, 'buildTableWidget');
+  assert.ok(tw.includes('qbaseAriaSort(node.qbase.sort, c)'), 'the header reads its state from the stored sort');
+  assert.ok(tw.includes('aria-sort="${as}"'), 'and announces it on the <th>');
+  assert.ok(tw.includes('mtWireQBaseSort(host, node);'), 'buildTableWidget wires the header door');
+  const w = fnBody(_src, 'mtWireQBaseSort');
+  assert.ok(/'mousedown'[\s\S]*e\.preventDefault\(\)[\s\S]*qbaseSortByHeader\(node, c, false\)/.test(w), 'pointer: mousedown + preventDefault, focus not moved');
+  assert.ok(/'keydown'[\s\S]*'Enter'[\s\S]*qbaseSortByHeader\(node, c, true\)/.test(w), 'keyboard alongside it, refocusing the header');
+  const by = fnBody(_src, 'qbaseSortByHeader');
+  assert.ok(by.includes('qbaseNextSort(node.qbase.sort, col)') && by.includes('node.qbase.sort = next'),
+    'it writes the SAME config the editor writes, not a twin');
+  assert.ok(by.includes('markDirty()') && by.includes('refreshTable(node)') && by.includes('flashHint('), 'persisted, repainted, announced');
+});
+
 // ─── untrusted-file hardening: a shared OPML's sidecar records are attacker-shaped ───────────────
 // arrAttr used to check only "is an array", so every record inside reached the pill renderers as
 // the file wrote it. Each test below is a shape that, before its fix, injected markup or threw out

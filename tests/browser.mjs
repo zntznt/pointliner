@@ -9568,6 +9568,79 @@ test('table view: the doors of a list stay on a 320px screen', { skip: skip() },
   await pg.close();
 });
 
+// table-view-proposal.md slice 2: sort a list's table by its column header. On main the header was
+// inert text and the only sort door was typing "beds desc" into the query editor. Driven with a real
+// pointer press AND real keys, watching what moved: the stored qbase.sort, the row order, aria-sort on
+// the <th>, where focus is (a press must not move it; a keypress must keep it on the header), and the
+// page width at 320px and 375px with the arrow showing.
+test('table view slice 2: a header press and Enter cycle the sort, announced, focus kept', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>Farm</title></head><body>' +
+      '<outline text="## Crops"><outline text="Kale {prop beds: 4} {prop yield: 30}"/><outline text="Chard {prop beds: 2} {prop yield: 12}"/>' +
+      '<outline text="Beans {prop beds: 3} {prop yield: 20}"/></outline><outline text="Notes"/></body></opml>')); render(); });
+    await pg.waitForTimeout(400);
+    await pg.evaluate(() => document.querySelector('.addrow-affordance[aria-label="Show list as table view: Crops"]').click());
+    await pg.waitForTimeout(600);
+    // Read what the sort door SAID, not the shared toast: a deferred onboarding tip can repaint it.
+    await pg.evaluate(() => { const hint = window.flashHint; window.__said = [];
+      window.flashHint = (msg, replay) => { if (/^(Sorted by|Rows back)/.test(msg)) window.__said.push(msg); return hint(msg, replay); }; });
+    const said = () => pg.evaluate(() => window.__said.splice(0));
+    const st = () => pg.evaluate(() => {
+      const h = document.querySelector('.md-table-host');
+      const base = root.children[0].children[0];
+      return { sort: base.qbase.sort || null,
+        names: [...h.querySelectorAll('tr[data-nid]')].map(tr => tr.children[0].innerText.trim()),
+        aria: [...h.querySelectorAll('th[aria-sort]')].map(th => th.dataset.c + ':' + th.getAttribute('aria-sort')),
+        strip: h.querySelector('.mt-qbase-sort')?.textContent || null,
+        active: document.activeElement?.closest?.('.mt-qsort') ? 'header ' + document.activeElement.dataset.c
+          : (document.activeElement?.closest?.('.node-content')?.innerText.trim() || document.activeElement?.tagName) };
+    });
+    let s = await st();
+    assert.deepEqual([s.sort, s.names, s.aria], [null, ['Kale', 'Chard', 'Beans'], []], 'the fixture: document order, no aria-sort');
+    assert.equal(await pg.locator('.mt-qsort').count(), 3, 'every header of the table is a sort door');
+
+    // Pointer: the caret is in "Notes"; a real press on the beds header sorts and leaves the caret there.
+    await pg.evaluate(() => { const n = root.children[1]; const el = document.querySelector(`.node-content[data-id="${n.id}"]`);
+      enterEdit(el, n); el.focus(); activeContentId = n.id; });
+    await pg.locator('.mt-qsort[data-c="1"]').click();
+    await pg.waitForTimeout(400);
+    s = await st();
+    assert.deepEqual(s.sort, { col: 1, dir: 'asc' }, 'the press wrote the same qbase.sort the editor writes');
+    assert.deepEqual(s.names, ['Chard', 'Beans', 'Kale'], 'rows ordered by beds, smallest first');
+    assert.deepEqual(s.aria, ['1:ascending'], 'exactly the beds header announces ascending');
+    assert.equal(s.strip, 'by beds ↑', 'the strip names the sort, as for an editor sort');
+    assert.equal(s.active, 'Notes', 'the press did not take the caret out of the point (caret invariant)');
+    assert.deepEqual(await said(), ['Sorted by beds, smallest number first. Press again to reverse.'],
+      'announced once, with the SV-1 reading copy (P4)');
+
+    // Keyboard: focus the header and press Enter twice; focus stays on the same header throughout.
+    await pg.locator('.mt-qsort[data-c="1"]').focus();
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+    s = await st();
+    assert.deepEqual([s.sort, s.names, s.aria, s.active], [{ col: 1, dir: 'desc' }, ['Kale', 'Beans', 'Chard'], ['1:descending'], 'header 1'],
+      'Enter reverses it and focus is still on the beds header');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+    s = await st();
+    assert.deepEqual([s.sort, s.names, s.aria, s.active], [null, ['Kale', 'Chard', 'Beans'], [], 'header 1'],
+      'a third Enter returns document order, and the header keeps focus');
+    assert.deepEqual(await said(), ['Sorted by beds, largest number first. Press again to go back to document order.',
+      'Rows back in document order.'], 'each Enter announced what it did');
+    assert.equal(s.strip, null, 'the strip stops naming a sort');
+    await pg.keyboard.press('Shift+Tab'); await pg.keyboard.press('Tab');
+    assert.equal((await st()).active, 'header 1', 'the header is in the Tab order');
+    await pg.keyboard.press('Space'); await pg.waitForTimeout(400);
+    assert.deepEqual((await st()).sort, { col: 1, dir: 'asc' }, 'Space works like Enter');
+
+    for (const width of [320, 375]) {
+      await pg.setViewportSize({ width, height: 800 }); await pg.waitForTimeout(300);
+      const w = await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+      assert.equal(w, false, `no sideways page scroll at ${width}px with a sorted header`);
+    }
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
 // #1666: h:mm durations, driven with the issue's own keystrokes. On main the total read
 // `0 2 not counted`: `1:15` was words to every rollup. Now it is 1.25 hours, and a total over an
 // all-h:mm column inherits the h:mm display (a spreadsheet's SUM over time cells does the same). The

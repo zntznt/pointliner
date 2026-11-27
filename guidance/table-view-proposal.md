@@ -1,6 +1,6 @@
 # Table view of a list: proposal
 
-**Status: slice 1 SHIPPED (2026-11-26); slices 2 and 3 within doctrine, not built; slice 4 needs an
+**Status: slices 1 and 2 SHIPPED (2026-11-26); slice 3 within doctrine, not built; slice 4 needs an
 owner decision.** Read alongside `bases-direction.md` (binding), `base-views-vision.md` §0 and §3b,
 `query-base-proposal.md`, `saved-views-proposal.md` (§0.6, the saved-views line is drawn by kind),
 `ux-discipline.md` (P5, the UXP-20 syntax guard) and issue #866 (the substrate test).
@@ -129,7 +129,7 @@ would keep pointing at the original.
 
 **Verdict: within doctrine, no owner call needed.**
 
-### Slice 2: sort by clicking a query base's column header (not built)
+### Slice 2: sort by clicking a query base's column header (SHIPPED)
 
 **What.** A query base's read-only headers render no Column menu, so sorting means typing
 `beds desc` in the editor. Clicking (and Enter on) a header would cycle ascending, descending,
@@ -141,6 +141,21 @@ invariant applies (mousedown + preventDefault, a keyboard path alongside, P3-3),
 needs a sort state announced (`aria-sort`).
 
 **Verdict: within doctrine, no owner call needed.**
+
+**Shipped.** Every query base header (a list's table view and a document-wide one alike) is a sort
+door: a pointer press acts on mousedown + preventDefault, so the caret stays where it was; Enter or
+Space on the focused header does the same and keeps focus on that header across the rebuild, so the
+cycle can be pressed through. The `<th>` of the sorted column carries `aria-sort` (only that one, per
+WAI-ARIA) and shows an arrow; the strip's `by beds ↑` and the editor's Sort rows field read the same
+config, so the three can never disagree. Each press is announced with SV-1's reading copy ("Sorted by
+beds, smallest number first. Press again to reverse."), so both sort doors describe a column the
+same way.
+
+*Pure cores:* `qbaseNextSort` (the cycle) and `qbaseAriaSort` (the state). *Census:* an authored
+base's header already has its own door (the Column menu, whose Sort rows section is SV-1's one-shot
+data sort); a query base had none, because that menu's operations write `node.text`. So nothing was
+twinned: the query base gets the config door SV-2 already defined, and the authored header is
+unchanged. Board, Cards and Calendar have no column headers and need no door.
 
 ### Slice 3: choose columns by ticking, not by typing lines (not built)
 
