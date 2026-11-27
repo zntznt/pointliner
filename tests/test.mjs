@@ -23902,6 +23902,27 @@ test('#1296 tableToPoints: rows become points under one heading; number columns 
   assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
 });
 
+test('#1700 delimited import: quoted multi-line cells, a } in a value, and two lines of prose', () => {
+  // 1. A quoted cell may hold a newline (our CSV export and Excel's TSV clipboard both do this).
+  assert.deepEqual(host(c.importSplitRows('name,notes\nx,"line1\nline2"\ny,z', ',')),
+    [['name', 'notes'], ['x', 'line1\nline2'], ['y', 'z']], 'a quoted newline stays inside its cell');
+  assert.deepEqual(host(c.importSplitRows('a\tb\n"one\ntwo"\tc', '\t')), [['a', 'b'], ['one\ntwo', 'c']], 'TSV quotes a multi-line cell too');
+  assert.deepEqual(host(c.importSplitRow('5" pipe,x', ',')), ['5" pipe', 'x'], 'a quote inside a cell is literal');
+  const kids = c.tableToPoints('name,notes\nx,"line1\nline2"\ny,z', ',').points[0].children;
+  assert.equal(kids.length, 2, 'two data rows, not three points');
+  assert.equal(kids[0].text, 'x {prop notes: line1\nline2}', 'the multi-line value rides one {prop} token');
+  // 2. A brace in a value is written to the sidecar, not into the {prop} token it would break.
+  const r = c.tableToPoints('name,val,n\nr,x}y,2', ',').points[0].children[0];
+  assert.equal(r.text, 'r {prop n: 2}', 'nothing of the braced value is left in the text');
+  assert.deepEqual(host(r.props), [{ key: 'val', val: 'x}y' }], 'the value survives whole as a property');
+  // 3. Two lines of prose are not a table; a two-line table still is, and our own export round-trips.
+  assert.equal(c.sniffDelimited('Dear Bob, thanks for lunch\nSee you soon, Al'), null, 'a two-line note is prose');
+  assert.equal(c.sniffDelimited('Item,Cost\nSink,540'), ',', 'a two-line table is still a table');
+  const csv = c.rowsToCsv([['name', 'notes'], ['Sink', 'two lines,\nand a "quote"']]);
+  assert.equal(c.sniffDelimited(csv), ',', 'the export sniffs as a table');
+  assert.equal(c.tableToPoints(csv, ',').points[0].children[0].text, 'Sink {prop notes: two lines,\nand a "quote"}', 'the export round-trips');
+});
+
 test('#1324 pasting a spreadsheet into the OUTLINE runs the same conversion (not just the Import dialog)', () => {
   // handlePaste sniffs a delimited paste and converts it to the table-of-points, promotes the {prop} tokens,
   // and tells the user with an undoable toast. Before, this ran ONLY inside the Import dialog, so a paste
