@@ -14022,6 +14022,7 @@ function mtWireQBaseSort(host, node) {
 }
 function qbaseSortByHeader(node, col, refocus) {
   const next = qbaseNextSort(node.qbase.sort, col);
+  pushUndo();   // #1691: without it Ctrl+Z reached PAST the sort, deleting a just-made table view
   if (next) node.qbase.sort = next; else delete node.qbase.sort;
   markDirty(); refreshTable(node);
   if (refocus) mtHost(node.id)?.querySelector(`.mt-qsort[data-c="${col}"]`)?.focus();
@@ -33545,10 +33546,13 @@ function editQBase(node) {
     scope: node.qbase.scope || '',
     pickKeys: node.qbase.scope === 'siblings' ? listColumnKeys(parentOf(node.id)?.children, knownStates(root)) : [],
     onResult: (expr, cols, sort, scope) => {
-      node.qbase = { expr, cols,
+      const next = { expr, cols,
         ...(node.qbase.showAll ? { showAll: true } : {}),
         ...(sort ? { sort } : {}),
         ...(scope ? { scope } : {}) };
+      if (JSON.stringify(next) === JSON.stringify(node.qbase)) return;   // an unchanged Save is no undo step
+      pushUndo();   // #1691: a Save (the column ticks land here) was unrecoverable; Ctrl+Z reached PAST it
+      node.qbase = next;
       markDirty(); refreshTable(node);
     },
   });
