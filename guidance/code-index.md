@@ -1111,6 +1111,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `resolveSearchExpr` — Resolve any embedded {…} in a search expr so a query ARGUMENT can be dynamic — {count: {status}},
 - `queryRows`
 - `queryReduce` — {roll: <search-query>} — pick ONE random point matching the query, returned as its title
+- `_qrMemo` — The live-document door to queryReduce for expandAggExpr's pills. A doc-wide reducer walks every
+- `queryReduceMemo`
 - `queryCountIn` — count("query") — the original cardinality form, now a thin delegate to the general reducer.
 - `_qrfMemo` — 4c (cross-document-direction.md): the FOLDER-scoped reducer behind {= sum("query", prop,
 - `queryReduceFolder`

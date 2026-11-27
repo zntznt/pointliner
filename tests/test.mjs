@@ -18422,8 +18422,8 @@ test('#914 renderMathPill + expandAggExpr wire the leaf cue and the document wid
   // the expandAggExpr reducer arms accept the document/doc widener and route it to the doc root
   const eae = fnBody(_src, 'expandAggExpr');
   assert.ok(/folder\|document\|doc/.test(eae), 'the reducer arms must accept the document/doc scope word');
-  assert.ok(eae.includes('queryCountIn(q, root)'), 'a document-scoped count must search the doc root');
-  assert.ok(eae.includes('queryReduce(fn, q, prop, root)'), 'a document-scoped reducer must search the doc root');
+  assert.ok(eae.includes("queryReduceMemo('count', q, null, sc ? root : node)"), 'a document-scoped count must search the doc root');
+  assert.ok(eae.includes('queryReduceMemo(fn, q, prop, sc ? root : node)'), 'a document-scoped reducer must search the doc root');
 });
 
 test('#1331 the leaf cue is loud + actionable: it names the document count and the one-word fix', () => {
@@ -19151,6 +19151,61 @@ test('reduceAgg — shared identity semantics (SR-8)', () => {
   assert.equal(c.reduceAgg('avg', []), 0);
   assert.equal(c.reduceAgg('min', []), Infinity, 'min of ∅ → +∞ (vacuously-true constraints)');
   assert.equal(c.reduceAgg('max', []), -Infinity, 'max of ∅ → -∞');
+});
+
+test('aggregateVarBaseColumn reduces through reduceAgg: the two agree on every edge case', () => {
+  const cases = {
+    'empty (matched, no numerics)': { 'b.x.c': 'text', 'b.y.c': NaN },
+    'non-finite dropped': { 'b.x.c': 3, 'b.y.c': Infinity, 'b.z.c': NaN, 'b.w.c': '7' },
+    'numbers': { 'b.x.c': 5, 'b.y.c': -2, 'b.z.c': 9 },
+  };
+  const numeric = vars => Object.values(vars).filter(v => typeof v === 'number' && isFinite(v));
+  for (const [label, vars] of Object.entries(cases))
+    for (const fn of ['count', 'sum', 'avg', 'min', 'max'])
+      assert.equal(c.aggregateVarBaseColumn(fn, 'b', 'c', vars), c.reduceAgg(fn, numeric(vars)), `${label}: ${fn}`);
+  assert.equal(c.aggregateVarBaseColumn('median', 'b', 'c', cases.numbers), null, 'an unknown reducer stays null (literal → #ERR), not reduceAgg\'s 0');
+  assert.ok(fnBody(_src, 'aggregateVarBaseColumn').includes('reduceAgg(fn, vals)'), 'one reducer, not a second copy');
+});
+
+test('queryReduceMemo — a doc-wide query reducer is memoized per generation, and an edit invalidates it', () => {
+  const setRoot = vm.runInContext('(r) => { root = r; buildIndex(root, null); resetDocCaches(); }', c._context);
+  const markDirty = vm.runInContext('() => markDirty()', c._context);
+  const r = c.mkRoot();
+  const a = c.mkNode('a #task'); a.props = [{ key: 'cost', val: '10' }];
+  const b = c.mkNode('b #task'); b.props = [{ key: 'cost', val: '5' }];
+  r.children.push(a, b);
+  try {
+    setRoot(r);
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(15)');
+    a.props[0].val = '100';   // mutate without the signal: the memo is what answered, so it is unchanged
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(15)', 'same generation → memo hit');
+    markDirty();              // the single invalidation point every edit goes through
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(105)', 'an edit must never serve the stale total');
+    assert.equal(c.expandAggExpr('count("#task", document)', a), '(2)');
+    b.text = 'b'; markDirty();
+    assert.equal(c.expandAggExpr('count("#task", document)', a), '(1)', 'count rides the same memo and the same signal');
+    assert.equal(c.expandAggExpr('max("#task", cost, document)', a), '(100)', 'a different reducer is a different key');
+  } finally { setRoot(c.mkRoot()); }
+});
+
+test('queryReduceMemo — checks that count checks get the same verdicts with the memo as without', () => {
+  const setRoot = vm.runInContext('(r) => { root = r; buildIndex(root, null); resetDocCaches(); }', c._context);
+  const reset = vm.runInContext('() => resetDocCaches()', c._context);
+  const r = c.mkRoot();
+  const a = c.mkNode('a'); a.props = [{ key: 'check', val: 'count("is:failing", document) <= 1' }];
+  const b = c.mkNode('b'); b.props = [{ key: 'check', val: 'count("is:failing", document) == 2' }];
+  r.children.push(a, b);
+  try {
+    setRoot(r);
+    const freshA = c.evalCheck(a); reset();
+    const freshB = c.evalCheck(b); reset();
+    // one generation, a pill first, then both checks: no check may read a count another context computed
+    c.expandAggExpr('count("is:failing", document)', a);
+    assert.equal(c.evalCheck(a), freshA, 'a after a pill');
+    assert.equal(c.evalCheck(b), freshB, 'b after a');
+    reset();
+    assert.equal(c.evalCheck(b), freshB); assert.equal(c.evalCheck(a), freshA, 'a after b');
+  } finally { setRoot(c.mkRoot()); }
 });
 
 test('queryReduce / expandAggExpr — reduce a property over a live query set (SR-8 / #877)', () => {

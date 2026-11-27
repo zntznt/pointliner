@@ -296,6 +296,29 @@ map at each of the 200 declaration counts, and each resolves its whole chain. It
 document size. Incremental resolution between counts would remove it, but `resolveVarDefs` resolves
 eagerly per map, so that is a change to the resolver, not to this cache.
 
+### Query-reducer pills: one walk per generation (2026-11-27)
+
+Pure cores in Node v24 through `tests/load-cores.mjs`, on a 4-core Intel Xeon E-2224 Debian host
+(median of 7 passes, after one warm pass). Document: 5,000 points (50 sections of 99 items, each
+item tagged `#task` or `#risk`, some `#big`, with numeric `cost` and `sev`). A "pass" is
+`expandAggExpr` for 50 pills, the call `renderMathPill` makes for every math pill it paints.
+"Mixed" = 20 distinct `sum`/`avg`/`min`/`max`/`count` over 4 queries, `, document` scope.
+
+| 50 pills per pass | before | after, same generation | after, first pass after an edit |
+|---|---|---|---|
+| same doc-wide reducer x50 | **1 076 ms** | 0.11 ms | 23 ms |
+| 20 distinct doc-wide reducers | **1 008 ms** | 0.11 ms | 414 ms |
+| subtree reducer, one per 100-point section | 21 ms | 0.11 ms | 21 ms |
+
+A doc-wide `sum("q", prop, document)` walks every point and matches each one (~20 ms at 5k), and
+nothing remembered it, so each pill paid that on every render. `queryReduceMemo` keeps the result
+per (scope point, reducer, query, prop) and clears on `_varsVer`, the signal `queryRowsMemo` and
+`qbaseModel` already use, so any edit recomputes and a plain re-render does no tree work.
+
+**What is left** is the cold cost: the first pass after an edit still pays one walk per DISTINCT
+reducer (414 ms for 20 of them at 5k). Sharing one walk across reducers that use the same query, or
+an incremental index, would cut that; neither is done.
+
 ### Scroll, doc-caches, and pill-heavy documents
 
 | scenario | M | W |

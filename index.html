@@ -5009,12 +5009,8 @@ function aggregateVarBaseColumn(fn, base, col, vars) {
     if (typeof v === 'number' && isFinite(v)) vals.push(v);
   }
   if (!matched) return null;
-  if (fn === 'count') return vals.length;
-  if (fn === 'sum')   return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg')   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  if (fn === 'min')   return vals.length ? Math.min(...vals) : Infinity;
-  if (fn === 'max')   return vals.length ? Math.max(...vals) : -Infinity;
-  return null;
+  // the shared identity semantics; an unknown reducer stays null (literal → #ERR), not reduceAgg's 0
+  return ['count', 'sum', 'avg', 'min', 'max'].includes(fn) ? reduceAgg(fn, vals) : null;
 }
 
 
@@ -5252,7 +5248,7 @@ function expandAggExpr(expr, node, vars = null) {
   // the default subtree meaning of every existing reducer. `, folder` still widens to the notebook.
   if (/\bcount\s*\(\s*"/.test(e)) {
     e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
-      (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : sc ? queryCountIn(q, root) : queryCountIn(q, node)) + ')');
+      (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : queryReduceMemo('count', q, null, sc ? root : node)) + ')');
   }
   // here("query") — is THIS point one the query would match? #1365. The app knows a great deal about
   // every point (its tags, its state, whether it is done, overdue, owned) and exposed all of it as
@@ -5294,7 +5290,7 @@ function expandAggExpr(expr, node, vars = null) {
   // reduces across the whole reading set. Any other third word → literal → #ERR.
   if (/\b(?:sum|avg|min|max)\s*\(\s*"/.test(e)) {
     e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
-      (m, fn, q, prop, sc) => '(' + (sc === 'folder' ? queryReduceFolder(fn, q, prop) : sc ? queryReduce(fn, q, prop, root) : queryReduce(fn, q, prop, node)) + ')');
+      (m, fn, q, prop, sc) => '(' + (sc === 'folder' ? queryReduceFolder(fn, q, prop) : queryReduceMemo(fn, q, prop, sc ? root : node)) + ')');
   }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
@@ -19594,6 +19590,23 @@ function queryReduce(fn, expr, prop, scope, seqs = allSequences(), vars = collec
   const vals = [];
   for (const c of matches) { const v = childPropNumber(c, prop); if (v !== null) vals.push(v); }
   return reduceAgg(fn, vals);
+}
+// The live-document door to queryReduce for expandAggExpr's pills. A doc-wide reducer walks every
+// point (~20 ms at 5k), and each math pill re-expands on every render, so 50 such pills cost ~1 s a
+// pass. Memoized per (scope point, fn, query, prop) on _varsVer, the signal queryRowsMemo and
+// qbaseModel use: any edit bumps it, so a result never outlives the document state it was read from.
+let _qrMemo = new Map(), _qrVer = -1; // doc-cache: qrMemo (see DOC_CACHES)
+regDocCache('qrMemo', { reset: () => _qrMemo.clear() });
+function queryReduceMemo(fn, expr, prop, scope) {
+  // Inside a check the answer is contextual: a check that reaches a check already being evaluated
+  // reads 'error' for it, so `count("is:failing", document)` differs per asking check. Never shared.
+  if (!scope || _evalCheckActive.size) return queryReduce(fn, expr, prop, scope);
+  if (_qrVer !== _varsVer) { _qrMemo.clear(); _qrVer = _varsVer; }
+  let per = _qrMemo.get(scope);
+  if (!per) _qrMemo.set(scope, per = new Map());
+  const k = fn + '\x00' + (expr || '') + '\x00' + (prop || '');
+  if (!per.has(k)) per.set(k, queryReduce(fn, expr, prop, scope));
+  return per.get(k);
 }
 // count("query") — the original cardinality form, now a thin delegate to the general reducer.
 function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) {
