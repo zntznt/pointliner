@@ -289,7 +289,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `nodePropVars` — The point's OWN numeric properties as a { name: number } overlay, so a bare name
 - `resolveNodeScope` — The merged { name: number } variable scope visible AT a node — the ONE place the two
 - `_evalCheckActive` — Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
+- `_evalCheckStack` — Per-pass verdict memo: a chain of N checks each counting the failing checks below it re-evaluated the
+- `_evalCheckCycles`
 - `evalCheck` — Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
+- `evalCheckOnce`
 
 ## custom calendars (#527, Tier 1)
 
@@ -406,6 +409,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `collectVars`
 - `_varDeclIdxVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
 - `varMapAt`
+- `varDeclResolved` — The resolveVarDefs result after the first k declaring points, cached per k. Each builds on the
 - `varDeclIndex` — One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
 - `varDeclState` — The accumulator after pack vars and the first k declaring points: what both positional readers
 - `collectNodeDecls` — Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
