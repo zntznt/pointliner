@@ -9936,3 +9936,68 @@ test('doc-swap: a shared snapshot never writes the browser slot the user\'s own 
     assert.deepEqual(back.__errs, []);
   } finally { await ctx.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('doc-swap: a second tab saving a different document keeps the overwritten one restorable', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const X = 'Tab A document', Y = 'Tab B, a different document';
+  const ctx = await browser.newContext();   // ONE context: both tabs share the origin's one autosave slot
+  try {
+    const a = await bootIn(ctx);
+    await seedBrowserDoc(a, X);
+    const b = await bootIn(ctx);
+    // Tab B starts a different document (File > New) and its autosave takes the shared slot.
+    await b.evaluate(async t => {
+      await adoptDocWithRestorePoint(mkRoot(), { fileName: 'other' });
+      root.children = [mkNode(t)]; buildIndex(root, null); markDirty(); render();
+    }, Y);
+    await slotHas(b, Y);
+    // Tab A types on, and its autosave writes over tab B's document.
+    await a.evaluate(() => { root.children[0].text += ' edited'; markDirty(); });
+    await slotHas(a, X + ' edited');
+    await waitFn(a, t => hasEarlierVersion() && earlierVersionForCurrentDoc().root.children.some(n => n.text === t), Y);
+    await waitFn(a, () => (document.getElementById('flash-hint')?.textContent || '').startsWith('Another tab is saving a different document'));
+    assert.deepEqual([a.__errs, b.__errs], [[], []]);
+  } finally { await ctx.close(); }
+});
+
+test('url-append: ?append= survives the OPFS boot reconcile, is capped, and one Ctrl+Z removes it', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const origin = swOrigin();
+  const url = await origin.listen();        // hosted: handleUrlAppend is inert on file://
+  const ctx = await browser.newContext({ serviceWorkers: 'block' });
+  try {
+    const first = await bootIn(ctx, url);
+    await seedBrowserDoc(first, 'Mine');
+    await waitFn(first, () => autosaveTimer === null && !_savePending);
+    await first.close();
+    // The OPFS copy now matches localStorage, so the reconcile swaps it in: an append made before
+    // that swap was erased while the toast still said "Captured".
+    const pg = await bootIn(ctx, url + '?append=' + encodeURIComponent('Shared ' + 'x'.repeat(12000)));
+    await waitFn(pg, () => root.children.length === 2);
+    const got = await pg.evaluate(() => ({ len: root.children[1].text.length, head: root.children[1].text.slice(0, 7),
+      hint: document.getElementById('flash-hint')?.textContent || '', search: location.search }));
+    assert.deepEqual([got.len, got.head, got.search], [10000, 'Shared ', ''], 'one capped point lands and the param is stripped');
+    assert.match(got.hint, /^✓ Captured to top level \(first 10,000 characters\): Shared x+\. (Ctrl|⌘)\+Z to undo$/);
+    await slotHas(pg, 'Shared xxx');
+    await pg.evaluate(() => document.activeElement?.blur?.());
+    await pg.keyboard.press('Control+z');
+    assert.deepEqual(await pg.evaluate(() => root.children.map(n => n.text)), ['Mine'], 'one undo removes the captured point');
+    assert.deepEqual(pg.__errs, []);
+  } finally { await ctx.close(); await origin.close(); }
+});
+
+test('storage: navigator.storage.persist() is asked once, after the first autosave, and a refusal is ignored', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const ctx = await browser.newContext();
+  try {
+    const pg = await bootIn(ctx, APP, () => {
+      window.__persistCalls = 0;
+      StorageManager.prototype.persist = function () { window.__persistCalls++; return Promise.reject(new Error('refused')); };
+    });
+    await seedBrowserDoc(pg, 'First write');
+    await pg.evaluate(() => { root.children[0].text += ' and a second'; markDirty(); });
+    await slotHas(pg, 'First write and a second');
+    assert.equal(await pg.evaluate(() => window.__persistCalls), 1, 'asked exactly once across two autosaves');
+    assert.deepEqual(pg.__errs, [], 'the refusal never surfaces as an error');
+  } finally { await ctx.close(); }
+});

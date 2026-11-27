@@ -18422,8 +18422,8 @@ test('#914 renderMathPill + expandAggExpr wire the leaf cue and the document wid
   // the expandAggExpr reducer arms accept the document/doc widener and route it to the doc root
   const eae = fnBody(_src, 'expandAggExpr');
   assert.ok(/folder\|document\|doc/.test(eae), 'the reducer arms must accept the document/doc scope word');
-  assert.ok(eae.includes('queryCountIn(q, root)'), 'a document-scoped count must search the doc root');
-  assert.ok(eae.includes('queryReduce(fn, q, prop, root)'), 'a document-scoped reducer must search the doc root');
+  assert.ok(eae.includes("queryReduceMemo('count', q, null, sc ? root : node)"), 'a document-scoped count must search the doc root');
+  assert.ok(eae.includes('queryReduceMemo(fn, q, prop, sc ? root : node)'), 'a document-scoped reducer must search the doc root');
 });
 
 test('#1331 the leaf cue is loud + actionable: it names the document count and the one-word fix', () => {
@@ -18593,6 +18593,48 @@ test('evalCheck: a check that queries checks re-entering its own host answers, n
     assert.equal(c.evalMath(c.expandAggExpr('count("is:failing", document)', host, {}), {}), 2, 'a fail and an error count, a pass does not'));
 });
 
+// A chain of checks that each count the failing checks below them re-evaluated every check under each
+// level: 2^N evaluations (N = 20 took 9.5 s). The per-pass memo evaluates each check once per call.
+test('evalCheck: a chain of nested counting checks evaluates each check once, and an edit still flips it', () => {
+  const n = (id, props = {}, children = []) => ({ id, text: id, seq: [], children,
+    props: Object.entries(props).map(([key, v]) => ({ key, val: String(v) })) });
+  const N = 16, chain = [];
+  let top = n('c' + N, { x: 0, check: 'x < 1' });
+  chain.push(top);
+  for (let i = N - 1; i >= 1; i--) { top = n('c' + i, { check: 'count("is:failing") == 0' }, [top]); chain.unshift(top); }
+  const ctx = c._context, orig = ctx.expandAggExpr;
+  let evals = 0;
+  ctx.expandAggExpr = function (...a) { evals++; return orig.apply(this, a); };
+  ctx.__chkRoot = n('r', {}, [top = chain[0]]);
+  vm.runInContext('root = __chkRoot; buildIndex(root); resetDocCaches();', ctx);
+  try {
+    // a subtree count never includes its own point, so a passing leaf passes every level
+    assert.equal(c.evalCheck(top, c.collectVars(), c.ancestorsOf(top)), 'pass');
+    assert.ok(evals <= N, `${evals} evaluations for a chain of ${N} checks (was 2^${N - 1})`);
+    // the memo lives for one call: an edit at the bottom reaches the top on the next call
+    chain[N - 1].props[0].val = '5';
+    vm.runInContext('markDirty()', ctx);
+    assert.equal(c.evalCheck(top, c.collectVars(), c.ancestorsOf(top)), 'fail', 'a failing leaf fails every level above it');
+    chain[N - 1].props[0].val = '0';
+    vm.runInContext('markDirty()', ctx);
+    assert.equal(c.evalCheck(top, c.collectVars(), c.ancestorsOf(top)), 'pass', 'and passes again once fixed: no verdict outlives its call');
+    // a verdict that depended on ANOTHER active check (a cycle through `document`) is not memoized;
+    // these are the verdicts the unmemoized evaluator gave
+    const doc = n('r', {}, [
+      n('p', { check: 'count("is:failing", document) <= 2' }, [n('p1', { check: 'count("is:passing") >= 1' })]),
+      n('q', { check: 'count("is:failing", document) <= 3' }, [n('q1', { x: 5, check: 'x < 1' })]),
+      n('s', { check: 'count("is:failing") == 1' }, [n('s1', { check: 'count("is:failing", document) >= 4' })])]);
+    ctx.__chkRoot = doc;
+    vm.runInContext('root = __chkRoot; buildIndex(root); resetDocCaches();', ctx);
+    const all = []; (function w(x) { all.push(x); x.children.forEach(w); })(doc);
+    assert.equal(all.slice(1).map(x => x.id + ':' + c.evalCheck(x, c.collectVars(), c.ancestorsOf(x))).join(' '),
+      'p:fail p1:fail q:fail q1:fail s:fail s1:pass');
+  } finally {
+    ctx.expandAggExpr = orig;
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', ctx);
+  }
+});
+
 test('evalCheck: null when no check, error when malformed or unresolvable', () => {
   assert.equal(c.evalCheck(c.mkNode('plain'), {}), null);                                // no check property
   assert.equal(c.evalCheck(mkCheckNode('', {}), {}), null);                              // empty value → no check
@@ -18752,7 +18794,7 @@ test('varMapAt + renderPosVarMaps: the shared declaration index gives every poin
     }
     return byKey;
   }`, c._context);
-  const norm = m => m && { vals: { ...m }, dists: c.varDistsOf(m) && { ...c.varDistsOf(m) } };
+  const norm = m => m && { keys: Object.keys(m), vals: { ...m }, dists: c.varDistsOf(m) && { ...c.varDistsOf(m) } };   // keys: order too
   const normPos = m => m && [...m].map(([k, v]) => [k, norm(v)]);
   let compared = 0, declaring = 0, posCompared = 0, distMaps = 0;
   try {
@@ -18779,6 +18821,42 @@ test('varMapAt + renderPosVarMaps: the shared declaration index gives every poin
   }
   assert.ok(compared > 1500 && declaring > 300 && posCompared > 200 && distMaps > 100,
     `the fixture went thin: ${compared} points, ${declaring} declaring, ${posCompared} per-token, ${distMaps} with a distribution`);
+});
+
+// The ~52 ms left after the one-walk index: each of the 200 declaration counts re-resolved its whole
+// chain, ~43k evaluations for 200 chained declarations. Each count now builds on the one below it.
+test('varMapAt + renderPosVarMaps: a 200-declaration chain evaluates each declaration about once', () => {
+  const ctx = c._context, orig = ctx.evalMath, D = 200;
+  const r = c.mkRoot(), pts = [];
+  const decl = (text, key, name, expr) => { const p = c.mkNode(text + ' [[var:' + key + ']]'); p.vars = [{ key, name, expr }]; return p; };
+  pts.push(decl('fwd', 'f', 'w', 'later + 1'), decl('undef', 'u', 'u', 'nope + 1'));
+  for (let i = 0; i < D; i++) {
+    const p = decl('d' + i, 'k' + i, 'v' + i, i ? 'v' + (i - 1) + ' + 1' : '1');
+    p.text += ' [[math:m' + i + ']]';                       // a pill after the declaration: renderPosVarMaps' second token
+    pts.push(p, c.mkNode('plain ' + i));
+  }
+  pts.push(decl('shadow', 's', 'v0', '100'), c.mkNode('after shadow'), decl('late', 'l', 'later', '5'), c.mkNode('end'));
+  r.children.push(...pts);
+  let evals = 0;
+  ctx.evalMath = function (...a) { evals++; return orig.apply(this, a); };
+  ctx.__vdRoot = r;
+  vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();', ctx);
+  try {
+    for (const p of nonEmpty(pts, 'chain points')) { c.varMapAt(p); c.renderPosVarMaps(p); }
+    // once per declaration, once per pill after one, and the whole chain again under the shadowing v0
+    assert.ok(evals <= 3 * D + 10, `${evals} evaluations for ${D} chained declarations (rebuilding each map from scratch took ~60,000)`);
+    const at = text => c.varMapAt(pts.find(p => p.text.startsWith(text)));
+    assert.equal(at('plain 199').v199, 200, 'the chain resolves');
+    assert.equal(at('plain 199').w, undefined, 'a reference to a later name is unresolved above it');
+    assert.equal(at('after shadow').v199, 299, 'a later redeclaration re-resolves everything that read it');
+    assert.equal(at('plain 50').v50, 51, 'and only below it');
+    assert.equal(at('end').w, 6, 'the forward reference resolves once its name is declared');
+    assert.equal('u' in at('end'), false, 'an undefined reference never resolves');
+    assert.equal(c.renderPosVarMaps(pts.find(p => p.text.startsWith('d7 '))).get('m7').v7, 8, 'a pill after a declaration sees it');
+  } finally {
+    ctx.evalMath = orig;
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', ctx);
+  }
 });
 
 test('varMapAt: one document walk per generation, and points between two declarations share one map', () => {
@@ -19151,6 +19229,61 @@ test('reduceAgg — shared identity semantics (SR-8)', () => {
   assert.equal(c.reduceAgg('avg', []), 0);
   assert.equal(c.reduceAgg('min', []), Infinity, 'min of ∅ → +∞ (vacuously-true constraints)');
   assert.equal(c.reduceAgg('max', []), -Infinity, 'max of ∅ → -∞');
+});
+
+test('aggregateVarBaseColumn reduces through reduceAgg: the two agree on every edge case', () => {
+  const cases = {
+    'empty (matched, no numerics)': { 'b.x.c': 'text', 'b.y.c': NaN },
+    'non-finite dropped': { 'b.x.c': 3, 'b.y.c': Infinity, 'b.z.c': NaN, 'b.w.c': '7' },
+    'numbers': { 'b.x.c': 5, 'b.y.c': -2, 'b.z.c': 9 },
+  };
+  const numeric = vars => Object.values(vars).filter(v => typeof v === 'number' && isFinite(v));
+  for (const [label, vars] of Object.entries(cases))
+    for (const fn of ['count', 'sum', 'avg', 'min', 'max'])
+      assert.equal(c.aggregateVarBaseColumn(fn, 'b', 'c', vars), c.reduceAgg(fn, numeric(vars)), `${label}: ${fn}`);
+  assert.equal(c.aggregateVarBaseColumn('median', 'b', 'c', cases.numbers), null, 'an unknown reducer stays null (literal → #ERR), not reduceAgg\'s 0');
+  assert.ok(fnBody(_src, 'aggregateVarBaseColumn').includes('reduceAgg(fn, vals)'), 'one reducer, not a second copy');
+});
+
+test('queryReduceMemo — a doc-wide query reducer is memoized per generation, and an edit invalidates it', () => {
+  const setRoot = vm.runInContext('(r) => { root = r; buildIndex(root, null); resetDocCaches(); }', c._context);
+  const markDirty = vm.runInContext('() => markDirty()', c._context);
+  const r = c.mkRoot();
+  const a = c.mkNode('a #task'); a.props = [{ key: 'cost', val: '10' }];
+  const b = c.mkNode('b #task'); b.props = [{ key: 'cost', val: '5' }];
+  r.children.push(a, b);
+  try {
+    setRoot(r);
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(15)');
+    a.props[0].val = '100';   // mutate without the signal: the memo is what answered, so it is unchanged
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(15)', 'same generation → memo hit');
+    markDirty();              // the single invalidation point every edit goes through
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', a), '(105)', 'an edit must never serve the stale total');
+    assert.equal(c.expandAggExpr('count("#task", document)', a), '(2)');
+    b.text = 'b'; markDirty();
+    assert.equal(c.expandAggExpr('count("#task", document)', a), '(1)', 'count rides the same memo and the same signal');
+    assert.equal(c.expandAggExpr('max("#task", cost, document)', a), '(100)', 'a different reducer is a different key');
+  } finally { setRoot(c.mkRoot()); }
+});
+
+test('queryReduceMemo — checks that count checks get the same verdicts with the memo as without', () => {
+  const setRoot = vm.runInContext('(r) => { root = r; buildIndex(root, null); resetDocCaches(); }', c._context);
+  const reset = vm.runInContext('() => resetDocCaches()', c._context);
+  const r = c.mkRoot();
+  const a = c.mkNode('a'); a.props = [{ key: 'check', val: 'count("is:failing", document) <= 1' }];
+  const b = c.mkNode('b'); b.props = [{ key: 'check', val: 'count("is:failing", document) == 2' }];
+  r.children.push(a, b);
+  try {
+    setRoot(r);
+    const freshA = c.evalCheck(a); reset();
+    const freshB = c.evalCheck(b); reset();
+    // one generation, a pill first, then both checks: no check may read a count another context computed
+    c.expandAggExpr('count("is:failing", document)', a);
+    assert.equal(c.evalCheck(a), freshA, 'a after a pill');
+    assert.equal(c.evalCheck(b), freshB, 'b after a');
+    reset();
+    assert.equal(c.evalCheck(b), freshB); assert.equal(c.evalCheck(a), freshA, 'a after b');
+  } finally { setRoot(c.mkRoot()); }
 });
 
 test('queryReduce / expandAggExpr — reduce a property over a live query set (SR-8 / #877)', () => {
@@ -29687,10 +29820,41 @@ test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, top-level
   assert.ok(/appendTextToInbox\(text\)/.test(fn), 'routes through the shared inbox-append helper');
   assert.ok(/top level/.test(fn), '#559: no inbox → the toast names the top-level fallback (the capture still lands)');
   // it is called in the boot sequence after render(), and the manifest advertises share_target
-  assert.ok(/handleUrlAppend\(\);/.test(_src), 'called on boot');
+  // ...chained on the OPFS boot reconcile, which can swap in the durable copy and erased an earlier append
+  assert.ok(_src.includes('})().then(handleUrlAppend);'), 'called on boot, after the OPFS reconcile');
+  assert.ok(!/^handleUrlAppend\(\);/m.test(_src), 'not also called before the reconcile');
+  assert.ok(fn.includes('full.slice(0, URL_APPEND_MAX)'), 'the text a link can write is capped');
+  assert.ok(fn.includes('${MOD}+Z to undo'), 'the toast names the undo, since any link can trigger the write');
   // the append helper never evaluates the param — plain text into node.text (no promoteInlineShorthand)
   const app = fnBody(_src, 'appendTextToInbox');
   assert.ok(/mkNode\(t\)/.test(app) && !/promoteInlineShorthand/.test(app), 'plain text only, never promotes a pill from the URL param');
+});
+
+test('isForeignAutosave: only a DIFFERENT document another tab wrote while this page was open', () => {
+  const since = 1000;
+  const slot = (docId, savedAt) => JSON.stringify({ root: { docId, children: [] }, savedAt });
+  const other = slot('B', 2000);
+  assert.equal(c.isForeignAutosave(other, null, 'A', since), true, 'another tab wrote doc B after this page loaded');
+  assert.equal(c.isForeignAutosave(other, other, 'A', since), false, 'the slot still holds what THIS tab wrote (its own doc swap)');
+  assert.equal(c.isForeignAutosave(slot('A', 2000), null, 'A', since), false, 'the same document: presence warns, nothing to stash');
+  assert.equal(c.isForeignAutosave(slot('B', 500), null, 'A', since), false, 'a previous session wrote it before this page loaded');
+  assert.equal(c.isForeignAutosave(null, null, 'A', since), false, 'an empty slot');
+  assert.equal(c.isForeignAutosave('{not json', null, 'A', since), false, 'an unreadable slot');
+  assert.equal(c.isForeignAutosave(other, null, undefined, since), false, 'this tab has no identity to key a restore point under');
+});
+test('two tabs, one slot: writeLocalAutosave stashes a foreign document before overwriting it, and says so (src pins)', () => {
+  const fn = fnBody(_src, 'writeLocalAutosave');
+  const check = nonEmptyIdx(fn, 'isForeignAutosave(cur, _lastSlotWrite, root.docId, performance.timeOrigin)');
+  const stash = nonEmptyIdx(fn, 'stashPayloadAsPrev(rekeyPayloadDocId(cur, root.docId), root.docId)');
+  const write = nonEmptyIdx(fn, 'localStorage.setItem(AUTOSAVE_KEY, payload);');
+  assert.ok(check < stash && stash < write, 'checked and stashed BEFORE the live slot is overwritten');
+  assert.ok(fn.slice(write).includes('_lastSlotWrite = payload;'), 'records what this tab wrote, so its own later writes are not foreign');
+  assert.ok(fn.includes("flashHint(ok ? 'Another tab is saving a different document"), 'the stash is announced, never silent (P4)');
+});
+test('storage: navigator.storage.persist() is requested once, feature-detected, rejection ignored (src pin)', () => {
+  const fn = fnBody(_src, 'writeAutosavePayloadNow');
+  assert.ok(fn.includes('if (!_persistAsked && navigator.storage && navigator.storage.persist) { _persistAsked = true; try { navigator.storage.persist().catch(() => {}); } catch (_) {} }'),
+    'one guarded, non-blocking persist request on the autosave write');
 });
 
 // ── Per-doc view persistence (idea 5): remember zoom + scroll across doc switches ──
@@ -31330,6 +31494,11 @@ test('#1427 CI runs the browser smoke, and installs what it needs', () => {
     'unpinned install lets an upstream release turn the gate red with no change here');
   assert.ok(/playwright install .*chromium/.test(_wfTests),
     'and the browser binary too: the module alone launches nothing');
+  // The browser cache is keyed on the version by hand; a key left behind on a bump restores stale
+  // binaries and never re-saves, so every run downloads again with nothing to say so.
+  const pw = /playwright@(\d+\.\d+\.\d+)/.exec(_wfTests)[1];
+  assert.match(_wfTests, new RegExp(`key: ms-playwright-\\$\\{\\{ runner\\.os \\}\\}-${pw.replace(/\./g, '\\.')}\\n`),
+    'the ms-playwright cache key names the playwright version that is installed');
   // The offline job must stay offline. tests/test.mjs is the gate that works with no network, and
   // folding the browser checks into it would put a download on the common path.
   assert.ok(/^  node-tests:$/m.test(_wfTests), 'the offline job still exists');
@@ -35929,6 +36098,7 @@ test('#1581 census: every module-level cache is in DOC_CACHES or named as exempt
     _wsScanCache: "the folder scan, keyed on each file's lastModified and size: a changed file re-parses",
     _graphUnlinkedCache: 'one graph open: openGraph resets it, the graph is a summoned snapshot',
     _simMemo: 'simulate() results keyed on call text + resolved dice terms: a pure function of its key',
+    _evalCheckMemo: 'check verdicts for ONE outermost evalCheck call: cleared when its stack empties, so no edit can reach it',
   };
   for (const name of Object.keys(EXEMPT))
     assert.ok(declLine.has(name), `${name} is exempt but no longer declared at module level: drop the exemption`);

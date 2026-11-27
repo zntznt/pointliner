@@ -5009,12 +5009,8 @@ function aggregateVarBaseColumn(fn, base, col, vars) {
     if (typeof v === 'number' && isFinite(v)) vals.push(v);
   }
   if (!matched) return null;
-  if (fn === 'count') return vals.length;
-  if (fn === 'sum')   return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg')   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  if (fn === 'min')   return vals.length ? Math.min(...vals) : Infinity;
-  if (fn === 'max')   return vals.length ? Math.max(...vals) : -Infinity;
-  return null;
+  // the shared identity semantics; an unknown reducer stays null (literal → #ERR), not reduceAgg's 0
+  return ['count', 'sum', 'avg', 'min', 'max'].includes(fn) ? reduceAgg(fn, vals) : null;
 }
 
 
@@ -5252,7 +5248,7 @@ function expandAggExpr(expr, node, vars = null) {
   // the default subtree meaning of every existing reducer. `, folder` still widens to the notebook.
   if (/\bcount\s*\(\s*"/.test(e)) {
     e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
-      (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : sc ? queryCountIn(q, root) : queryCountIn(q, node)) + ')');
+      (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : queryReduceMemo('count', q, null, sc ? root : node)) + ')');
   }
   // here("query") — is THIS point one the query would match? #1365. The app knows a great deal about
   // every point (its tags, its state, whether it is done, overdue, owned) and exposed all of it as
@@ -5294,7 +5290,7 @@ function expandAggExpr(expr, node, vars = null) {
   // reduces across the whole reading set. Any other third word → literal → #ERR.
   if (/\b(?:sum|avg|min|max)\s*\(\s*"/.test(e)) {
     e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
-      (m, fn, q, prop, sc) => '(' + (sc === 'folder' ? queryReduceFolder(fn, q, prop) : sc ? queryReduce(fn, q, prop, root) : queryReduce(fn, q, prop, node)) + ')');
+      (m, fn, q, prop, sc) => '(' + (sc === 'folder' ? queryReduceFolder(fn, q, prop) : queryReduceMemo(fn, q, prop, sc ? root : node)) + ')');
   }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
@@ -5808,6 +5804,15 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
 // Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
 // document), here("is:passing")) reaches its own host again; without this it recursed to a RangeError.
 const _evalCheckActive = new Set();
+// Per-pass verdict memo: a chain of N checks each counting the failing checks below it re-evaluated the
+// checks under it at every level, 2^N evaluations. Lives for ONE outermost evalCheck call (cleared when
+// the stack empties), so no edit can ever read a stale verdict. Keyed on node + vars + ancestors, since
+// callers pass different scopes. A verdict is stored only when nothing in its evaluation hit the guard
+// for a point OTHER than the one asking (a cycle between two checks): that answer depends on which
+// checks happen to be active, so it is recomputed exactly as before. A point reaching itself is always
+// active when it asks, so that 'error' is the same in every context and does not block the memo.
+const _evalCheckStack = [], _evalCheckMemo = new Map();
+let _evalCheckCycles = 0;
 
 // Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 //   null  → the point has no check.
@@ -5821,30 +5826,43 @@ const _evalCheckActive = new Set();
 function evalCheck(node, vars = {}, ancestors = []) {
   const raw = checkExprOf(node);
   if (!raw) return null;
-  if (_evalCheckActive.has(node)) return 'error';   // re-entered: its verdict depends on itself
-  _evalCheckActive.add(node);
-  try {
-    // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
-    // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
-    // reporting 'pass' just because the number is truthy is a silent wrong-success
-    // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
-    if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
-    if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
-    // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
-    // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
-    // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
-    // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
-    // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
-    // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
-    if (firstEmptyRollup(raw, node)) return 'error';
-    const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
-    // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
-    // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
-    const scope = resolveNodeScope(node, ancestors, vars);
-    const res = evalMath(expanded, scope);
-    if (res === null) return 'error';
-    return res ? 'pass' : 'fail';
-  } finally { _evalCheckActive.delete(node); }
+  if (_evalCheckActive.has(node)) {                 // re-entered: its verdict depends on itself
+    if (_evalCheckStack[_evalCheckStack.length - 1] !== node) _evalCheckCycles++;   // another check's cycle
+    return 'error';
+  }
+  const hit = _evalCheckMemo.get(node);
+  if (hit && hit.vars === vars && hit.ancestors.length === ancestors.length && hit.ancestors.every((a, i) => a === ancestors[i])) return hit.v;
+  _evalCheckActive.add(node); _evalCheckStack.push(node);
+  const cycles = _evalCheckCycles;
+  let v;
+  try { return (v = evalCheckOnce(node, raw, vars, ancestors)); }
+  finally {
+    _evalCheckActive.delete(node); _evalCheckStack.pop();
+    if (!_evalCheckStack.length) { _evalCheckMemo.clear(); _evalCheckCycles = 0; }
+    else if (v !== undefined && _evalCheckCycles === cycles) _evalCheckMemo.set(node, { vars, ancestors, v });
+  }
+}
+function evalCheckOnce(node, raw, vars, ancestors) {
+  // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
+  // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
+  // reporting 'pass' just because the number is truthy is a silent wrong-success
+  // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
+  if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
+  if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
+  // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
+  // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
+  // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
+  // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
+  // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
+  // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
+  if (firstEmptyRollup(raw, node)) return 'error';
+  const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
+  // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
+  // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
+  const scope = resolveNodeScope(node, ancestors, vars);
+  const res = evalMath(expanded, scope);
+  if (res === null) return 'error';
+  return res ? 'pass' : 'fail';
 }
 
 // ─── dates: start + due ────────────────────────────────────────────────────────
@@ -7718,13 +7736,20 @@ function varMapAt(targetNode) {
   if (!targetNode) return collectVars();                 // no anchor → global map (back-compat)
   const idx = varDeclIndex(targetNode);
   // own declarations count ({a:=5}{a} in one point resolves); a point outside the tree sees them all
-  const k = idx.at.get(targetNode)?.[1] ?? idx.steps.length;
-  let resolved = idx.maps.get(k);
-  if (resolved) return resolved;
-  const s = varDeclState(idx, k);
-  resolved = attachVarDists(resolveVarDefs(s.defs, s.pickVals, s.order, s.propScopes).resolved, s.dists);
-  idx.maps.set(k, resolved);
-  return resolved;
+  return varDeclResolved(idx, idx.at.get(targetNode)?.[1] ?? idx.steps.length).resolved;
+}
+// The resolveVarDefs result after the first k declaring points, cached per k. Each builds on the
+// nearest cached count below it, so only the names declared in between (and their readers) evaluate.
+function varDeclResolved(idx, k) {
+  let rec = idx.maps.get(k);
+  if (rec) return rec;
+  let j = -1;
+  for (const c of idx.maps.keys()) if (c < k && c > j) j = c;
+  const prev = idx.maps.get(j), s = varDeclState(idx, k);
+  rec = resolveVarDefs(s.defs, s.pickVals, s.order, s.propScopes, prev, prev && idx.steps.slice(j, k).flatMap(st => st.map(a => a[0])));
+  attachVarDists(rec.resolved, s.dists);
+  idx.maps.set(k, rec);
+  return rec;
 }
 // One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
 // at(node) = [declaring points strictly before node, ... at or before it]. Rebuilt on a new
@@ -7757,6 +7782,7 @@ function varDeclState(idx, k) {
     if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
     if (dist !== undefined) dists[nm] = dist; else delete dists[nm];   // #952 sibling lane
     if (ps) propScopes[nm] = ps; else delete propScopes[nm];
+    return nm;
   };
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
@@ -7801,18 +7827,25 @@ function renderPosVarMaps(node) {
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
   // every declaration from the points ABOVE this one (document order), from the shared index
-  const idx = varDeclIndex(node);
-  const { defs, pickVals, dists, order, propScopes, add } = varDeclState(idx, idx.at.get(node)?.[0] ?? idx.steps.length);
+  const idx = varDeclIndex(node), k = idx.at.get(node)?.[0] ?? idx.steps.length;
   const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
-  let m;
+  // Each token builds on the map before it; a token with no declaration since then shares that map
+  // (maps are read-only), and the first one is varMapAt's map for the points above.
+  let m, st = null, cur = varDeclResolved(idx, k), pending = [];
   while ((m = RE.exec(node.text || '')) !== null) {
-    // the dists lane is a snapshot too — copy it, or every token would share the final map (#952)
-    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order, propScopes).resolved, Object.assign(Object.create(null), dists)));
+    if (pending.length) {
+      st ??= varDeclState(idx, k);
+      const changed = pending.map(a => st.add(...a)); pending = [];
+      cur = resolveVarDefs(st.defs, st.pickVals, st.order, st.propScopes, cur, changed);
+      // the dists lane is a snapshot too — copy it, or every token would share the final map (#952)
+      attachVarDists(cur.resolved, Object.assign(Object.create(null), st.dists));
+    }
+    byKey.set(m[2], cur.resolved);
     if (m[1] === 'var') {                                              // a declaration adds itself, so a
       const v = node.vars?.find(x => x.key === m[2]);                  // LATER ref sees it, an earlier one not
-      if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
-                                 v.kind === 'dist' ? v : undefined, ownProps);
+      if (v?.name && v.expr) pending.push([v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
+                                           v.kind === 'dist' ? v : undefined, ownProps]);
     }
   }
   if (node.id != null) _posVarMapCache.set(node.id, byKey);
@@ -7858,21 +7891,41 @@ function varDistRec(vars, name) {
 // #1657: `propScopes` (optional) maps a name to the props visible at its DECLARING point
 // (resolveNodeScope over that point and its ancestors), so `{tot := r1 + r2}` reads the point's
 // own `r1` exactly as a `{= r1 + r2}` beside it does. Props win over variables, as in a pill.
-function resolveVarDefs(defs, pickVals, order, propScopes) {
+// Incremental: `prev` is an earlier result over a SUBSET of these declarations and `changed` the
+// names declared since. A name whose expression never looked up a changed name (directly or through
+// what it read) has the same value, so it is replayed from `prev` instead of evaluated: its reads are
+// re-resolved in the same order, which keeps `resolved`'s key order and the cycle flags identical.
+// That turns the positional maps (one per declaration count) from O(n^2) evaluations into O(n).
+function resolveVarDefs(defs, pickVals, order, propScopes, prev, changed) {
   const resolved = Object.create(null);   // name -> number (successful only; the returned map)
   const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
   const cycles = new Set();
+  // deps: per name, what its expression looked up (seen) and, in order, what it resolved (gets)
+  const deps = Object.create(null);
+  const note = (l, get) => {
+    const d = deps[stack[stack.length - 1]] ??= { gets: [], seen: [] };
+    d.seen.push(l); if (get) d.gets.push(l);
+    return l;
+  };
+  // rev: name -> the names whose expression looked it up, shared down a chain of results. It only
+  // grows (a redeclared name keeps its old edges), which can over-mark a name dirty, never under-mark.
+  const rev = prev?.rev ?? Object.create(null);
+  let dirty = null;
+  if (prev) {   // the changed names and everything that looked one up, transitively
+    dirty = new Set(changed);
+    for (const nm of dirty) for (const r of rev[nm] || []) dirty.add(r);
+  }
   const proxy = new Proxy({}, {
-    has: (_, k) => typeof k === 'string' && k.toLowerCase() in defs,
-    get: (_, k) => resolve(String(k).toLowerCase()),
+    has: (_, k) => typeof k === 'string' && note(k.toLowerCase()) in defs,
+    get: (_, k) => resolve(note(String(k).toLowerCase(), true)),
   });
   const scopeOf = name => {
     const ps = propScopes?.[name];
     if (!ps || !Object.keys(ps).length) return proxy;
     return new Proxy({}, {
-      has: (_, k) => typeof k === 'string' && (k.toLowerCase() in ps || k.toLowerCase() in defs),
-      get: (_, k) => { const l = String(k).toLowerCase(); return l in ps ? ps[l] : resolve(l); },
+      has: (_, k) => typeof k === 'string' && (k.toLowerCase() in ps || note(k.toLowerCase()) in defs),
+      get: (_, k) => { const l = String(k).toLowerCase(); return l in ps ? ps[l] : resolve(note(l, true)); },
     });
   };
   function resolve(name) {
@@ -7896,15 +7949,23 @@ function resolveVarDefs(defs, pickVals, order, propScopes) {
       return undefined;
     }
     stack.push(name);
-    const val = evalMath(defs[name], scopeOf(name));
+    let val, ok;
+    if (dirty && !dirty.has(name) && name in prev.memo) {
+      const d = prev.deps[name];
+      if (d) for (const g of (deps[name] = d).gets) resolve(g);
+      val = prev.memo[name]; ok = val !== undefined;   // prev.memo holds only finite numbers or undefined
+    } else {
+      val = evalMath(defs[name], scopeOf(name)); ok = val !== null && isFinite(val);
+      for (const l of deps[name]?.seen || []) (rev[l] ??= new Set()).add(name);
+    }
     stack.pop();
-    const ok = val !== null && isFinite(val) && !cycles.has(name);
+    ok = ok && !cycles.has(name);
     memo[name] = ok ? val : undefined;
     if (ok) resolved[name] = val;
     return memo[name];
   }
   for (const nm of order) resolve(nm);
-  return { resolved, cycles };
+  return { resolved, cycles, memo, deps, rev };
 }
 
 // Add block prefix to nodes that have a type but no prefix in text (migration)
@@ -18474,7 +18535,10 @@ function buildSharePointText(body, title, url) {
 // title/text/url to the same param) drops ONE point into the inbox on load, then strips the
 // param so a reload never re-appends. HOSTED-only + secure-context (PWA-exception rule): inert
 // and silent from a file:// open. Plain text only — the param is NEVER evaluated. Runs after the
-// doc is restored (the inbox exists); markDirty() from the append then wins over a stale OPFS copy.
+// OPFS boot reconcile (chained on it), because that reconcile can swap in the durable copy and
+// erased an append made before it while the toast still said "Captured". Any link can trigger
+// this, so the write is capped, one undo step, and the toast names it and the undo key.
+const URL_APPEND_MAX = 10000;   // chars: far past any real share, short of a link-sized flood
 function handleUrlAppend() {
   if (location.protocol === 'file:' || !window.isSecureContext) return; // hosted enhancement only
   let params;
@@ -18489,13 +18553,15 @@ function handleUrlAppend() {
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
   } catch {}
   // combine into one point's text: the shared body, then a title/url if they add info
-  const text = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
-  if (!text) return;
+  const full = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
+  if (!full) return;
+  const text = full.slice(0, URL_APPEND_MAX).replace(/[\uD800-\uDBFF]$/, '');   // never split a surrogate pair
   const n = appendTextToInbox(text);   // never null for non-blank text (#559: top level is the zero-setup default)
   if (!n) return;
   render();
   const dest = resolveInbox();
-  flashHint(`✓ Captured to ${dest ? crumbLabel(dest) : 'top level'}: ${textForDisplay(n).slice(0, 40)}`);
+  const cut = text.length < full.length ? ` (first ${URL_APPEND_MAX.toLocaleString('en-US')} characters)` : '';
+  flashHint(`✓ Captured to ${dest ? crumbLabel(dest) : 'top level'}${cut}: ${textForDisplay(n).slice(0, 40)}. ${MOD}+Z to undo`);
 }
 
 // ─── journal / daily-notes ────────────────────────────────────────────────────
@@ -19594,6 +19660,23 @@ function queryReduce(fn, expr, prop, scope, seqs = allSequences(), vars = collec
   const vals = [];
   for (const c of matches) { const v = childPropNumber(c, prop); if (v !== null) vals.push(v); }
   return reduceAgg(fn, vals);
+}
+// The live-document door to queryReduce for expandAggExpr's pills. A doc-wide reducer walks every
+// point (~20 ms at 5k), and each math pill re-expands on every render, so 50 such pills cost ~1 s a
+// pass. Memoized per (scope point, fn, query, prop) on _varsVer, the signal queryRowsMemo and
+// qbaseModel use: any edit bumps it, so a result never outlives the document state it was read from.
+let _qrMemo = new Map(), _qrVer = -1; // doc-cache: qrMemo (see DOC_CACHES)
+regDocCache('qrMemo', { reset: () => _qrMemo.clear() });
+function queryReduceMemo(fn, expr, prop, scope) {
+  // Inside a check the answer is contextual: a check that reaches a check already being evaluated
+  // reads 'error' for it, so `count("is:failing", document)` differs per asking check. Never shared.
+  if (!scope || _evalCheckActive.size) return queryReduce(fn, expr, prop, scope);
+  if (_qrVer !== _varsVer) { _qrMemo.clear(); _qrVer = _varsVer; }
+  let per = _qrMemo.get(scope);
+  if (!per) _qrMemo.set(scope, per = new Map());
+  const k = fn + '\x00' + (expr || '') + '\x00' + (prop || '');
+  if (!per.has(k)) per.set(k, queryReduce(fn, expr, prop, scope));
+  return per.get(k);
 }
 // count("query") — the original cardinality form, now a thin delegate to the general reducer.
 function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) {
@@ -48567,6 +48650,7 @@ function scheduleAutosave() {
   autosaveTimer = setTimeout(writeAutosavePayloadNow, 800);
   _savePending = true; updateSaveStatus();   // #1268: the chip reads "Saving…" until the debounced write lands
 }
+let _persistAsked = false;   // navigator.storage.persist() is requested once, on the first autosave write
 // The debounce body, extracted so the pagehide flush below can run it synchronously.
 function writeAutosavePayloadNow() {
   autosaveTimer = null;
@@ -48576,6 +48660,9 @@ function writeAutosavePayloadNow() {
   if (!loadedFromEmbed) {
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+    // Ask once that the browser not evict this origin's storage under pressure. Best-effort: the
+    // browser may say no, and there is nothing to do differently either way.
+    if (!_persistAsked && navigator.storage && navigator.storage.persist) { _persistAsked = true; try { navigator.storage.persist().catch(() => {}); } catch (_) {} }
   }
   // #1440: `&& dirty` — the folder write follows the DOCUMENT, not the view. Ten of the twenty-four
   // scheduleAutosave() call sites are pure view state (the agenda Running/Done/Overdue filters, its
@@ -48789,6 +48876,18 @@ function storageAdvice({ lsFailed = false, quota = false, opfsOk = false, worksp
   return null;
 }
 
+// Two same-origin tabs in browser mode share ONE autosave slot, so the last writer wins and the
+// other tab's document silently vanished on reload (presence only notices the SAME document).
+// Pure: is the slot's current value a DIFFERENT document another tab wrote while this page was open?
+// `mine` is the payload this tab last wrote (an unchanged slot is ours, whatever doc it holds), and
+// `since` is when this page loaded (a previous session's copy predates it and was restored, not lost).
+function isForeignAutosave(cur, mine, docId, since) {
+  if (!cur || cur === mine || !docId) return false;
+  try { const d = JSON.parse(cur); return !!(d && d.root && d.root.docId && d.root.docId !== docId && d.savedAt > since); }
+  catch (_) { return false; }
+}
+let _lastSlotWrite = null, _foreignSlotNoticed = false;
+
 function writeLocalAutosave(payload) {
   if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   try {
@@ -48831,7 +48930,20 @@ function writeLocalAutosave(payload) {
         }
       }
     }
+    // Before overwriting another tab's document, keep it as this document's restore point (the
+    // adoptDocWithRestorePoint precedent: rekeyed, so File > Restore earlier version finds it).
+    // shortcut: fire-and-forget like the rolling snapshot above; a closing tab may outrun the stash.
+    const cur = localStorage.getItem(AUTOSAVE_KEY);
+    if (isForeignAutosave(cur, _lastSlotWrite, root.docId, performance.timeOrigin)) {
+      stashPayloadAsPrev(rekeyPayloadDocId(cur, root.docId), root.docId).then(ok => {
+        if (ok && _foreignSlotNoticed) return;
+        _foreignSlotNoticed = true;
+        flashHint(ok ? 'Another tab is saving a different document in this browser. Its latest copy is kept: File menu, Restore earlier version.'
+          : 'Another tab is saving a different document in this browser, and its copy could not be kept; storage may be full. Save one of them to a file.');
+      });
+    }
     localStorage.setItem(AUTOSAVE_KEY, payload);
+    _lastSlotWrite = payload;
     if (!opfsOk && payload.length > STORAGE_SOFT_LIMIT) {   // #1113: capability, not presence
       showStorageWarn('soft', 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
@@ -50186,7 +50298,6 @@ syncRollLogLabel();     // #1405: root.rollLog is per-DOCUMENT, and the toolbar 
 render();
 updateTitle();
 refreshIcons();
-handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in the inbox (hosted-only, param stripped)
 // UXP-126's Start-blank door now belongs to showExamplesDoc, the one path that puts the tour on
 // screen. It must NOT fire for the #1192 blank first-run: there the chooser is the door, and an
 // "these are live examples" banner over a blank document would be describing nothing.
@@ -50237,7 +50348,7 @@ handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in
     _opfsReconciled = true;                 // autosave may now run
     if (_autosaveDeferred) { _autosaveDeferred = false; scheduleAutosave(); }
   }
-})();
+})().then(handleUrlAppend);   // #465: ?append= / share_target lands AFTER the reconcile, which may swap in the OPFS copy and would erase it
 
 requestAnimationFrame(() => {
   // A shared snapshot (C1) opens in DISPLAY mode: the recipient should see the rendered,

@@ -25,7 +25,7 @@ permissions:
 jobs:
   node-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10   # measured ~15s
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,7 +46,7 @@ jobs:
   # of one. Both are offline, so this job keeps node-tests' no-network property.
   drift-guards:
     runs-on: ubuntu-latest
-    timeout-minutes: 5   # measured ~2s; these read files, they do not run a suite
+    timeout-minutes: 5   # these read files, they do not run a suite
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -100,7 +100,7 @@ jobs:
   # and the registry stay on the pinned version; a new release is not a reason for them to change.
   mutation-current-node:
     runs-on: ubuntu-latest
-    timeout-minutes: 5   # measured ~2s for the self-test; the Node download is most of it
+    timeout-minutes: 5   # the self-test is seconds; the Node download is most of it
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,6 +130,13 @@ jobs:
       # --no-save / --no-package-lock: nothing is written back into the tree, so a
       # run cannot leave a package.json behind for someone to commit by accident.
       - run: npm install --no-save --no-package-lock playwright@1.49.1
+      # The browser binary is the big download. Keyed on the playwright version above (a test holds
+      # the two equal): a bump misses once and saves a fresh entry. --with-deps still runs on a hit,
+      # because the apt packages are not in the cache.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-1.49.1
       - run: npx playwright install --with-deps chromium
       # Without this the job passes on SKIPS if playwright fails to resolve, which is a green
       # gate that proved nothing -- the exact shape this file exists to catch.
@@ -149,7 +156,7 @@ jobs:
   # runs first and must see the gate fail on known cases, or a pass below would prove nothing.
   undefined-names:
     runs-on: ubuntu-latest
-    timeout-minutes: 5   # measured ~1s for the check; the install is most of it
+    timeout-minutes: 5   # the check is seconds; the install is most of it
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
