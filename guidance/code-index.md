@@ -856,6 +856,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## table-view-proposal.md slice 4: a list table's rows are its list's points
 
 - `qbaseTitleHtml` — Owner call 2026-11-26: "table should be able to add, reorder and rename points." Only for a
+- `qbaseRepaintSource` — #1704: a cell commit repaints the point's outline row on the spot, its text AND the chrome outside
 - `qbaseRowLabel`
 - `qbaseRenameCommit`
 - `qbaseFocusRow`
@@ -865,6 +866,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `showQRowPanel`
 - `mtWireQBaseRows`
 - `mtWireQBaseSort` — Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
+- `qbaseArrowTarget` — #1704: where an arrow key moves in a query base's grid, the authored grid's grammar (P1). Rows
+- `qbaseFocusAt`
+- `qbaseArrowNav`
+- `mtWireQBaseArrows` — Arrows from a body cell: the caret moves inside the text first, as in an authored cell.
 - `qbaseSortByHeader`
 
 ## FR-1 per-role cell editors

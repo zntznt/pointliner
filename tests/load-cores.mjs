@@ -358,7 +358,7 @@ export function loadCores() {
     'rowCursorAnchorId','rowCursorEntryIndex',   // #1522: which row the arrows act from when the remembered id is stale
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','highlightRanges','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','listTableSpec','tableViewListFor','qbaseSourceText','parseQBaseCols','qbaseColsHave','qbaseColsToggle','listColumnKeys','mtCellHtml','mtWriteColRole','mtWriteColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','qbaseListScoped','qbaseMoveBlock','listMoveIndices','pointTitleParts','retitleText','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
-    'mtSortRows','mtSortOrder','parseQBaseSort','qbaseNextSort','qbaseAriaSort', // SV-1/SV-2 sorting, slice 2 header door
+    'mtSortRows','mtSortOrder','parseQBaseSort','qbaseNextSort','qbaseAriaSort','qbaseArrowTarget', // SV-1/SV-2 sorting, slice 2 header door
     'effectiveAlign',   // #1475: the alignment a base cell actually gets (menu + renderer share it)
     'cellNum','colIsNumeric','sortReading','sortReadingCopy','capFirst',   // #1469: the one numeric reading Calculate and Sort share, and what it is called
 

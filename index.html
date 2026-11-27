@@ -13872,7 +13872,10 @@ function mtWireQBaseEdit(host, node) {
     }
     if (next) next.focus();
     else if (e.key === 'Tab' && !e.shiftKey && qbaseListScoped(node.qbase)) qbaseAddRow(node);
-    else cell.blur();
+    // #1704: past the top, Shift+Tab / Shift+Enter reach the header, as in an authored grid
+    else if (e.shiftKey) qbaseFocusAt(host, node, -1, e.key === 'Tab' ? host.querySelectorAll('.mt-qsort').length - 1 : +cell.dataset.c);
+    else if (e.key === 'Enter') { cell.blur(); cell.focus(); }   // last row: commit, keep your place (an authored grid stops)
+    else navigateToNext(node.id);   // Tab past a search base's last cell leaves it for the next point
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
@@ -13906,6 +13909,7 @@ function mtWireQBaseEdit(host, node) {
     if (route === 'date') setDateProp(src, field.trim().toLowerCase(), raw);
     else setProp(src, field, raw);
     markDirty();
+    qbaseRepaintSource(src);   // #1704: the outline row too, even while focus stays in the grid
     // Repaint from what was STORED, not what was typed: setDateProp resolves a relative form, so
     // `today+7` must show as the date it landed on rather than leaving the cell disagreeing with
     // the model until the next full render.
@@ -13920,6 +13924,7 @@ function mtWireQBaseEdit(host, node) {
     // synchronous render inside focusout; it would steal the next-clicked cell's focus).
     scheduleVarBaseRender(host);
   });
+  mtWireQBaseArrows(host, node);   // #1704: the grid's arrow grammar (the readOnly build skips mtWireCells)
   if (qbaseListScoped(node.qbase)) mtWireQBaseRows(host, node);
 }
 
@@ -13932,6 +13937,13 @@ function mtWireQBaseEdit(host, node) {
 function qbaseTitleHtml(nid) {
   const src = nid && nodeById(nid);
   return escHtml(src ? stripCaptionTags(displayText(src)) : '');
+}
+// #1704: a cell commit repaints the point's outline row on the spot, its text AND the chrome outside
+// it (the due chip lives in .node-props-row), the way exitEdit does. The deferred full render below
+// skips while focus stays in the grid, which is what left the row stale.
+function qbaseRepaintSource(src) {
+  repaintNodeContent(src);
+  for (const id of affordanceDirtyIds(src, parentOf(src.id) || null)) refreshRowChrome(id);
 }
 function qbaseRowLabel(src) { return (src && displayText(src) || '(untitled)').slice(0, 40); }
 function qbaseRenameCommit(host, node, cell, nid, raw, was, srcText) {
@@ -13949,6 +13961,7 @@ function qbaseRenameCommit(host, node, cell, nid, raw, was, srcText) {
   promoteInlineShorthand(src);   // a {...} typed into the name becomes its pill, as in the outline
   markDirty();
   repaint();
+  qbaseRepaintSource(src);   // #1704: its outline row now, not when focus next leaves the table
   flashHint(raw ? `Renamed "${old}" to "${qbaseRowLabel(src)}". Undo puts the old name back.`
                 : `Cleared the name of "${old}". Undo puts it back.`);
   scheduleVarBaseRender(host);
@@ -14052,9 +14065,49 @@ function mtWireQBaseSort(host, node) {
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, false);
     });
     b.addEventListener('keydown', e => {
+      if (e.key.startsWith('Arrow')) { qbaseArrowNav(host, node, e, -1, c); return; }   // #1704
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);
     });
+  });
+}
+// #1704: where an arrow key moves in a query base's grid, the authored grid's grammar (P1). Rows
+// are body rows in display order, i === -1 being the sort header. Returns {i, c}, 'prev'/'next'
+// (leave the base to the adjacent point, as an authored base does at its edges), or null (stay).
+function qbaseArrowTarget(key, i, c, nRows, nCols) {
+  if (key === 'ArrowUp')    return i > 0 ? { i: i - 1, c } : i === 0 ? { i: -1, c } : 'prev';
+  if (key === 'ArrowDown')  return i < nRows - 1 ? { i: i + 1, c } : 'next';
+  if (key === 'ArrowLeft')  return c > 0 ? { i, c: c - 1 } : null;
+  if (key === 'ArrowRight') return c < nCols - 1 ? { i, c: c + 1 } : null;
+  return null;
+}
+function qbaseFocusAt(host, node, i, c) {
+  if (i < 0) { const h = host.querySelector(`.mt-qsort[data-c="${c}"]`); h?.focus(); return !!h; }
+  const tr = host.querySelectorAll('tr[data-r]:not(.mt-headrow)')[i];
+  return !!tr && mtFocusCell(node, +tr.dataset.r, c);   // its rAF re-assert covers a rebuild on commit (#1468)
+}
+function qbaseArrowNav(host, node, e, i, c) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const nRows = host.querySelectorAll('tr[data-r]:not(.mt-headrow)').length;
+  const t = qbaseArrowTarget(e.key, i, c, nRows, host.querySelectorAll('.mt-qsort').length);
+  e.preventDefault(); e.stopPropagation();
+  if (t === 'prev') navigateToPrev(node.id);
+  else if (t === 'next') navigateToNext(node.id);
+  else if (t) qbaseFocusAt(host, node, t.i, t.c);
+}
+// Arrows from a body cell: the caret moves inside the text first, as in an authored cell.
+function mtWireQBaseArrows(host, node) {
+  host.addEventListener('keydown', e => {
+    if (!e.key.startsWith('Arrow') || e.defaultPrevented) return;
+    const cell = e.target.closest('tr[data-r]:not(.mt-headrow) td.mt-cell'); if (!cell) return;
+    const sel = window.getSelection();
+    const nav = !cell.isContentEditable || (mtNavSel === cell && !sel?.isCollapsed);
+    const len = cell.textContent?.length ?? 0;
+    const edge = nav || (e.key === 'ArrowUp' ? isAtFirstLine(cell) : e.key === 'ArrowDown' ? isAtLastLine(cell)
+      : sel?.isCollapsed && getCaretOffset(cell) === (e.key === 'ArrowLeft' ? 0 : len));
+    if (!edge) return;
+    const rows = [...host.querySelectorAll('tr[data-r]:not(.mt-headrow)')];
+    qbaseArrowNav(host, node, e, rows.indexOf(cell.closest('tr')), +cell.dataset.c);
   });
 }
 function qbaseSortByHeader(node, col, refocus) {

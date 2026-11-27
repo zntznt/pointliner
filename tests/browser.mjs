@@ -9871,6 +9871,57 @@ test('table view slice 4: the keyboard renames, moves and adds points, and undo 
   } finally { await pg.close(); }
 });
 
+// #1704 (panel #9): a list's table view had no arrow grammar, so ArrowUp, the edge ArrowDowns and
+// Shift+Tab from the first cell dropped focus to <body>; and a Name or date edit reached the point
+// but its outline row kept the old text until someone clicked into it. Driven with real keys,
+// asserting where focus LANDED and what the outline row SAYS after each commit.
+test('#1704 a list table view: arrows and Shift+Tab keep focus in the grid, and a commit repaints the outline row', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(o => { adoptDoc(fromOpml(o)); const l = root.children[0];
+      l.children.forEach(n => setDateProp(n, 'due', '2026-12-01')); render();
+      createListTableView(l, listTableSpec(l, knownStates(root)).cols); }, SLICE4_OPML);
+    await pg.waitForTimeout(400);
+    const at = () => pg.evaluate(() => { const a = document.activeElement;
+      return a.matches('.mt-qsort') ? 'head:' + a.dataset.c : a.matches('td.mt-cell') ? nodeById(a.closest('tr').dataset.nid).text.split(' ')[0] + ':' + a.dataset.c
+        : a.matches('.node-content') ? 'point:' + a.innerText.trim() : a.tagName; });
+    const key = async k => { await pg.keyboard.press(k); await pg.waitForTimeout(150); return at(); };
+    const dueC = await pg.evaluate(() => String(qbaseColList(root.children[0].children[0].qbase.cols).findIndex(x => x.field.trim() === 'due')));
+    assert.notEqual(dueC, '-1', 'the table has a due column');
+
+    await cellOf(pg, 'Kale', 0).click();
+    assert.equal(await key('ArrowUp'), 'head:0', 'ArrowUp from the first row reaches its sort header');
+    assert.equal(await key('ArrowDown'), 'Kale:0', 'and ArrowDown comes back');
+    assert.equal(await key('ArrowDown'), 'Chard:0', 'down a row');
+    await cellOf(pg, 'Beans', 0).click();
+    assert.equal(await key('ArrowDown'), 'point:Kale #veg', 'down past the last row leaves for the next point, not <body>');
+    await cellOf(pg, 'Kale', 0).click();
+    assert.equal(await key('Shift+Tab'), 'head:' + dueC, 'Shift+Tab from the first cell reaches the header, not <body>');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);   // the header still sorts from here
+    assert.ok((await at()).startsWith('head:'), 'Enter on the header keeps focus there');
+    await pg.evaluate(() => { delete root.children[0].children[0].qbase.sort; markDirty(); render(); });
+    await pg.waitForTimeout(300);
+
+    const row = t => pg.evaluate(t => { const n = root.children[0].children.find(n => n.text.startsWith(t));
+      const d = document.querySelector(`.node[data-id="${n.id}"]`);
+      return [d.querySelector(':scope > .node-row > .node-content').innerText.trim(),
+        d.querySelector(':scope > .node-props-row')?.innerText.replace(/\s+/g, ' ').trim() || '']; }, t);
+    await cellOf(pg, 'Chard', 0).click();
+    await pg.keyboard.press('End'); await pg.keyboard.type('s'); await pg.keyboard.press('Enter');
+    await pg.waitForTimeout(400);
+    assert.equal(await at(), 'Beans:0', 'Enter moved down a row');
+    assert.match((await row('Chards'))[0], /^Chards/, 'the renamed point\'s outline row reads the new name while focus stays in the grid');
+    const dueWas = (await row('Beans'))[1];
+    await cellOf(pg, 'Beans', dueC).click();
+    await pg.keyboard.press('Control+a'); await pg.keyboard.type('2026-12-03'); await pg.keyboard.press('Shift+Enter');
+    await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => root.children[0].children.at(-1).props.find(p => p.key === 'due')?.val), '2026-12-03');
+    const dueNow = (await row('Beans'))[1];
+    assert.ok(/due/.test(dueNow) && dueNow !== dueWas, `the outline row's due chip shows the new date on the same commit: ${dueWas} -> ${dueNow}`);
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
 // #1691: a header sort and an editor Save (where the column ticks land) recorded no undo step, so
 // Ctrl+Z after either undid the step BEFORE it. On a table just made with + Table view, that was the
 // table itself: driven on main, Ctrl+Z after a header sort deleted the whole table.
