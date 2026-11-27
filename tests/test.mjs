@@ -830,6 +830,20 @@ test('evalMath — names colliding with Object.prototype fail to null, not the i
   assert.equal(c.evalMath('constructor*2', { constructor: 5 }), 10);
 });
 
+test('#1695: a declared variable named like a constant wins, in evalMath, the reason and the menu', () => {
+  // Census from the source, so a new constant is covered without editing this test.
+  const m = _src.match(/const MATH_CONSTS = Object\.assign\(Object\.create\(null\), \{([^}]*)\}/);
+  assert.ok(m, 'MATH_CONSTS literal not found (renamed?)');
+  const names = [...m[1].matchAll(/(\w+)\s*:/g)].map(x => x[1]).concat('today');
+  for (const name of nonEmpty(names, 'constant names')) {
+    assert.equal(c.evalMath(name + '*2', { [name]: 5 }), 10, `${name} := 5 must read as 5`);
+    assert.notEqual(c.evalMath(name, {}), null, `undeclared ${name} still reads as the constant`);
+    assert.equal(c.mathErrorReason(name + '*2', { [name]: 'x' }), 'non-numeric', `a string ${name} is named`);
+    const got = c.mathCompletions(name, { [name]: 5 }).filter(x => x.name === name);
+    assert.deepEqual(host(got.map(x => x.group)), ['var'], `${name} is offered once, as the variable`);
+  }
+});
+
 // ── markov ─────────────────────────────────────────────────────────────────
 test('parseMarkov — declaration order and weighted targets', () => {
   const p = c.parseMarkov('A -> B 2, C 1');
