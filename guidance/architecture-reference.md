@@ -664,7 +664,7 @@ keep the old behavior). See `guidance/typed-var-declaration-proposal.md` (Status
 column "HP" → `orc.hp`, readable in `{Orc.HP}` and `{= Orc.HP + 5}`, chaining like any formula
 var; column 0 projects under its own header (`orc.name` = "Orc"); an optional base name prefixes
 everything (`monsters.orc.hp`). The pure `varBaseDefs(node)` (memoized: `varBaseDefsMemo`, a
-self-invalidating per-node Map like `_varMapAtCache`) is consumed at exactly TWO gather hooks —
+self-invalidating per-node Map like `_posVarMapCache`) is consumed at exactly TWO gather hooks —
 `collectVars`'s walk and `collectNodeDecls` (covering both positional walks) — so a variable
 base is a declaration site at its document position. Cell rule (NOT `varDeclIsPick`): leading
 `=` → formula, bare number → number, else frozen TEXT verbatim (so a plain-text `2d6` cell is

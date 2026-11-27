@@ -191,7 +191,7 @@ export function loadCores() {
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'condAttempt', 'condAttemptReason', 'condEmptyMessage', 'strCondVerdict',
     'recordVarReads', 'depsChanged',   // #827 item 5: input-dependency snapshot + stale-inputs compare
     'parseAlt', 'pickWeightedAlt', 'modParts', 'bracedModParts', 'bracedDiceParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
-    'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varBasePreview',   // variable bases (dotted projections)
+    'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varDeclIndex', 'varDeclState', 'varBasePreview',   // variable bases (dotted projections)
     'sniffBibtex', 'parseBibtex', 'parseBibEntryBody', 'bibToPoints', 'bibFieldText', 'bibTranslateLatex',
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
@@ -275,6 +275,7 @@ export function loadCores() {
     'isEmptyPoint', 'pointHasOwnContent',       // #1580: the one "is this point a placeholder" predicate
     'provisionalToDrop', 'zoomCleanupFromStored', 'zoomCleanupCopy',   // #1613: which zoom point goes on zoom out, the stored setting, and its words
     'reconcileAction', 'bootPrefersFile', 'tmpWriteName', 'treeDepthExceeds',   // sync-safety + WAVE-3 ingestion depth clamp
+    'writeOutcome', 'sameSavedOpml',            // a write that awaited across an edit or a swap; a kept boot copy the file lacks
     'unmarkedFilesNote',                        // #845: no-docId files skipped by the folder scan, surfaced in the broken-links report
     'displayName', 'toFileName',                // file-name display/normalize
 
@@ -356,7 +357,7 @@ export function loadCores() {
     'rowCursorAnchorId','rowCursorEntryIndex',   // #1522: which row the arrows act from when the remembered id is stale
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','highlightRanges','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','listTableSpec','tableViewListFor','qbaseSourceText','parseQBaseCols','qbaseColsHave','qbaseColsToggle','listColumnKeys','mtCellHtml','mtWriteColRole','mtWriteColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
-    'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
+    'mtSortRows','mtSortOrder','parseQBaseSort','qbaseNextSort','qbaseAriaSort', // SV-1/SV-2 sorting, slice 2 header door
     'effectiveAlign',   // #1475: the alignment a base cell actually gets (menu + renderer share it)
     'cellNum','colIsNumeric','sortReading','sortReadingCopy','capFirst',   // #1469: the one numeric reading Calculate and Sort share, and what it is called
 

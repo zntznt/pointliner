@@ -869,7 +869,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 /* UXP-179: the base-view focusable controls share ONE canonical focus recipe (DL §4) — a solid
    accent outline, not a suppressed-outline --ring ghost (which failed the §3 3:1 non-text floor and
    vanished under forced-colors). Folded into one selector list so they can't drift apart again. */
-.mt-qbase-head:focus-visible,.mt-qbase-cap:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mt-qbase-head:focus-visible,.mt-qsort:focus-visible,.mt-qbase-cap:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mt-qbase-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));display:inline-flex;font-size:.9em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
@@ -955,6 +955,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
 .mt-cell.mt-selected{background:var(--cell-sel)}
 .mt-headcell{font-weight:600;background:var(--cbg);border-bottom-width:2px}
+.mt-qsort{cursor:pointer;user-select:none;border-radius:var(--r-sm)}/* slice 2: a query base header sorts */
 
 .md-table-host tr:hover>.mt-cell:not(:focus):not(.mt-selected){background:color-mix(in srgb,var(--fg) 3%,transparent)}
 .mt-cell.mt-a-center{text-align:center}
@@ -3416,6 +3417,7 @@ let heightCache = new Map(); // node id → measured px height
 let vlist = null, vTop = null, vBot = null;
 let winStart = 0, winEnd = -1;
 let dirty     = false;
+let _editGen  = 0;        // bumped by every markDirty(): a write that awaited across a bump does not hold that edit (writeOutcome)
 let _savePending = false;   // #1268: a debounced autosave is scheduled but not yet written ("Saving…")
 let _lastSavedAt = 0;       // #1268: epoch-ms of the last completed autosave write, for the "Saved <time>" chip
 let fileHandle = null;
@@ -5400,8 +5402,8 @@ function expandAggExpr(expr, node, vars = null) {
   // number. Seeded from the call text so the answer is STABLE across renders and decorrelated per
   // call; the session RNG is saved and restored so nothing else is touched. Not a dice expression,
   // an unresolvable N/threshold, or N < 1 → literal → #ERR (P4).
-  // ponytail: dice only (the peek covers deck/grammar sims); N capped at SIM_MAX so a per-render
-  // recompute stays cheap.
+  // ponytail: dice only (the peek covers deck/grammar sims); N capped at SIM_MAX, total dice rolled
+  // capped at SIM_WORK_MAX (#ERR above it), and the result memoized in _simMemo per call + terms.
   if (/\bsimulate\s*\(/.test(e)) {
     e = e.replace(/\bsimulate\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*,\s*(>=|<=|==|!=|>|<|=)\s*([^,()]+?)\s*\)/g,
       (m, nExpr, dice, op, thExpr) => {
@@ -5410,14 +5412,25 @@ function expandAggExpr(expr, node, vars = null) {
         const th = /^-?\d+(?:\.\d+)?$/.test(thExpr.trim()) ? Number(thExpr) : evalMath(thExpr, vars);
         if (N === null || !Number.isFinite(N) || N < 1) return m;
         if (th === null || !Number.isFinite(th)) return m;
-        if (!parseDice(dice, vars)) return m;                             // not a dice expression → #ERR
+        const terms = parseDice(dice, vars);
+        if (!terms) return m;                                             // not a dice expression → #ERR
         const trials = Math.min(SIM_MAX, Math.max(1, Math.round(N)));
-        const saved = _sessionRng;
-        _sessionRng = rngFromSeed(hashSeedStr(dice + '|' + op + th + '|' + trials));
-        let outcomes;
-        try { outcomes = sampleGenerator('dice', { expr: dice }, trials, { vars }); }
-        finally { _sessionRng = saved; }
-        const v = simulateChance(outcomes, op, th);
+        if (trials * simDiceCost(terms) > SIM_WORK_MAX) return m;         // too much work for one paint → #ERR
+        const seedStr = dice + '|' + op + th + '|' + trials;
+        // The result is a pure function of the seed text and the parsed terms (which carry any
+        // variable's resolved value), so memoize it: a paint must not re-run the Monte Carlo.
+        const key = seedStr + '|' + JSON.stringify(terms);
+        let v = _simMemo.get(key);
+        if (v === undefined) {
+          const saved = _sessionRng;
+          _sessionRng = rngFromSeed(hashSeedStr(seedStr));
+          let outcomes;
+          try { outcomes = sampleGenerator('dice', { expr: dice }, trials, { vars }); }
+          finally { _sessionRng = saved; }
+          v = simulateChance(outcomes, op, th);
+          if (_simMemo.size >= 500) _simMemo.clear();   // bounded: a few hundred distinct calls
+          _simMemo.set(key, v);
+        }
         return v === null ? m : '(' + v + ')';
       });
   }
@@ -5792,6 +5805,10 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
   return out;
 }
 
+// Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
+// document), here("is:passing")) reaches its own host again; without this it recursed to a RangeError.
+const _evalCheckActive = new Set();
+
 // Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 //   null  → the point has no check.
 //   pass  → the assertion evaluated to a truthy number (1).
@@ -5804,26 +5821,30 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
 function evalCheck(node, vars = {}, ancestors = []) {
   const raw = checkExprOf(node);
   if (!raw) return null;
-  // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
-  // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
-  // reporting 'pass' just because the number is truthy is a silent wrong-success
-  // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
-  if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
-  if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
-  // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
-  // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
-  // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
-  // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
-  // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
-  // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
-  if (firstEmptyRollup(raw, node)) return 'error';
-  const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
-  // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
-  // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
-  const scope = resolveNodeScope(node, ancestors, vars);
-  const res = evalMath(expanded, scope);
-  if (res === null) return 'error';
-  return res ? 'pass' : 'fail';
+  if (_evalCheckActive.has(node)) return 'error';   // re-entered: its verdict depends on itself
+  _evalCheckActive.add(node);
+  try {
+    // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
+    // numeric expression (5+5, sqrt(16), a lone property name) is not a test —
+    // reporting 'pass' just because the number is truthy is a silent wrong-success
+    // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
+    if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
+    if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
+    // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
+    // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
+    // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
+    // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
+    // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
+    // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
+    if (firstEmptyRollup(raw, node)) return 'error';
+    const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
+    // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
+    // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
+    const scope = resolveNodeScope(node, ancestors, vars);
+    const res = evalMath(expanded, scope);
+    if (res === null) return 'error';
+    return res ? 'pass' : 'fail';
+  } finally { _evalCheckActive.delete(node); }
 }
 
 // ─── dates: start + due ────────────────────────────────────────────────────────
@@ -7684,19 +7705,52 @@ function collectVars(rootNode) {
 // points in the document (the deliberate model change recorded in
 // guidance/typed-var-declaration-proposal.md §9 / generation-direction.md §2).
 //
-// Built per call (cheap: one short-circuited tree walk + the shared resolver) and cached by
-// node id on _varsVer, so repeated render reads of the same node don't re-walk. Pack vars
-// (plugin formula vars) are global and always precede document declarations, as before.
-let _varMapAtCacheVer = -1, _varMapAtCache = new Map(); // doc-cache: varMapAt (per-node; see DOC_CACHES)
-regDocCache('varMapAt', {});
+// The map at a node depends only on HOW MANY declaring points precede it (its own included), so
+// varDeclIndex walks the document once per _varsVer generation and the resolved maps are cached by
+// that count: every row between two declarations shares one map, and a document that declares
+// nothing resolves once. (A walk per node is O(position), and one edit reads hundreds of nodes, the
+// window's rows plus the backlinks scan's pill-bearing points: guidance/performance.md, "varMapAt".)
+// Shared across rows, so a returned map is read-only (resolveNodeScope copies; nothing writes one).
+// Pack vars (plugin formula vars) are global and always precede document declarations, as before.
+let _varDeclIdxVer = -1, _varDeclIdx = null; // doc-cache: varMapAt (one walk per generation; see DOC_CACHES)
+regDocCache('varMapAt', { read: () => varDeclIndex() });
 function varMapAt(targetNode) {
   if (!targetNode) return collectVars();                 // no anchor → global map (back-compat)
-  if (_varMapAtCacheVer !== _varsVer) { _varMapAtCache = new Map(); _varMapAtCacheVer = _varsVer; }
-  const id = targetNode.id;
-  if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
-
+  const idx = varDeclIndex(targetNode);
+  // own declarations count ({a:=5}{a} in one point resolves); a point outside the tree sees them all
+  const k = idx.at.get(targetNode)?.[1] ?? idx.steps.length;
+  let resolved = idx.maps.get(k);
+  if (resolved) return resolved;
+  const s = varDeclState(idx, k);
+  resolved = attachVarDists(resolveVarDefs(s.defs, s.pickVals, s.order, s.propScopes).resolved, s.dists);
+  idx.maps.set(k, resolved);
+  return resolved;
+}
+// One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
+// at(node) = [declaring points strictly before node, ... at or before it]. Rebuilt on a new
+// generation, a new root, or a target the walk never met (a point added before the bump).
+function varDeclIndex(target) {
+  if (_varDeclIdxVer !== _varsVer || _varDeclIdx.root !== root || (target && !_varDeclIdx.at.has(target))) {
+    const steps = [], at = new Map(), anc = [];   // anc: #1657, nearest-first
+    (function walk(node) {
+      if (!node) return;
+      const mine = [], before = steps.length;
+      collectNodeDecls(node, (...a) => mine.push(a), anc);
+      if (mine.length) steps.push(mine);
+      at.set(node, [before, steps.length]);
+      if (node !== root) anc.unshift(node);
+      for (const c of node.children || []) walk(c);
+      if (node !== root) anc.shift();
+    })(root);
+    _varDeclIdx = { root, steps, at, maps: new Map() }; _varDeclIdxVer = _varsVer;
+  }
+  return _varDeclIdx;
+}
+// The accumulator after pack vars and the first k declaring points: what both positional readers
+// resolve from (renderPosVarMaps keeps adding the point's own declarations token by token).
+function varDeclState(idx, k) {
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const propScopes = Object.create(null), anc = [];   // #1657
+  const propScopes = Object.create(null);
   const add = (nm, expr, pick, dist, ps) => {
     if (!(nm in defs)) order.push(nm);
     defs[nm] = expr;
@@ -7707,29 +7761,8 @@ function varMapAt(targetNode) {
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
   for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
-
-  // Depth-first walk; collect declarations until we REACH targetNode, then stop. A reference
-  // sees declarations in nodes before it, plus declarations earlier in its own node's text.
-  let done = false;
-  (function walk(node) {
-    if (done || !node) return;
-    if (node === targetNode) {
-      // include declarations that appear in targetNode's own text BEFORE this point is moot
-      // for a whole-node read; include the node's own typed declarations so {a:=5}{a} in one
-      // node resolves, then stop (nothing after the target is visible).
-      collectNodeDecls(node, add, anc);
-      done = true; return;
-    }
-    collectNodeDecls(node, add, anc);
-    if (node !== root) anc.unshift(node);
-    for (const c of node.children || []) { walk(c); if (done) return; }
-    if (node !== root) anc.shift();
-  })(root);
-
-  const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
-  attachVarDists(resolved, dists);
-  if (id != null) _varMapAtCache.set(id, resolved);
-  return resolved;
+  for (let i = 0; i < k; i++) for (const a of idx.steps[i]) add(...a);
+  return { defs, pickVals, dists, order, propScopes, add };
 }
 
 // Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
@@ -7767,12 +7800,9 @@ function renderPosVarMaps(node) {
   if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
-  const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const propScopes = Object.create(null), anc = [];   // #1657: props at each declaring point
-  const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
-  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
-  let done = false;    // gather declarations from every point ABOVE this one (document order)
-  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+  // every declaration from the points ABOVE this one (document order), from the shared index
+  const idx = varDeclIndex(node);
+  const { defs, pickVals, dists, order, propScopes, add } = varDeclState(idx, idx.at.get(node)?.[0] ?? idx.steps.length);
   const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let m;
@@ -12195,7 +12225,7 @@ function varBaseDefs(node) {
   return out;
 }
 // Memo: the parse + classify pass must not run once per varMapAt call (collectVars
-// rebuilds every markDirty). Ver-guarded per-node Map, the _varMapAtCache precedent —
+// rebuilds every markDirty). Ver-guarded per-node Map, the _posVarMapCache precedent —
 // NOT a tenth collector (self-invalidating; see the resetDocCaches doc-comment).
 let _varBaseDefsCacheVer = -1, _varBaseDefsCache = new Map(); // doc-cache: varBaseDefs (per-node; see DOC_CACHES)
 regDocCache('varBaseDefs', {});
@@ -12292,6 +12322,19 @@ function parseQBaseSort(text, cols) {
   const idx = list.findIndex(cd => (cd.name || cd.field).trim().toLowerCase() === name || cd.field.trim().toLowerCase() === name);
   if (idx < 0) return undefined;
   return { col: idx, dir: (m[2] || 'asc').toLowerCase() };
+}
+// table-view-proposal.md slice 2: a press on a query base's column header is a second door onto
+// the SAME qbase.sort the editor's Sort rows field writes. It cycles ascending, descending, then
+// document order (null); a press on another column starts that column at ascending. Pure.
+function qbaseNextSort(sort, col) {
+  if (!sort || sort.col !== col) return { col, dir: 'asc' };
+  return sort.dir === 'desc' ? null : { col, dir: 'desc' };
+}
+// The header's aria-sort for column `col`: only the sorted column carries one (WAI-ARIA asks for
+// aria-sort on one header at a time), so every other header returns null. Pure.
+function qbaseAriaSort(sort, col) {
+  if (!sort || sort.col !== col) return null;
+  return sort.dir === 'desc' ? 'descending' : 'ascending';
 }
 function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
 // The strip's words for where a query base's rows come from: its search, or for a list's table view
@@ -13726,6 +13769,36 @@ function mtWireQBaseEdit(host, node) {
   });
 }
 
+// Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
+// a press never moves focus), Enter/Space alongside it for the keyboard, which keeps focus on the
+// same header after the rebuild so the cycle can be pressed through.
+function mtWireQBaseSort(host, node) {
+  if (!node.qbase) return;
+  host.querySelectorAll('.mt-qsort').forEach(b => {
+    const c = +b.dataset.c;
+    b.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, false);
+    });
+    b.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);
+    });
+  });
+}
+function qbaseSortByHeader(node, col, refocus) {
+  const next = qbaseNextSort(node.qbase.sort, col);
+  if (next) node.qbase.sort = next; else delete node.qbase.sort;
+  markDirty(); refreshTable(node);
+  if (refocus) mtHost(node.id)?.querySelector(`.mt-qsort[data-c="${col}"]`)?.focus();
+  const m = qbaseModel(node);
+  const name = String(m.rows[0]?.[col] || 'column ' + (col + 1)).trim();
+  if (!next) { flashHint(`Rows back in document order.`); return; }
+  // The SV-1 reading copy, so "smallest number first" means the same thing from either sort door.
+  const sc = sortReadingCopy(sortReading(m.rows, col, qbaseColRoles(node.qbase.cols)[col] || null, m.rows.length - 1));
+  flashHint(`Sorted by ${name}, ${next.dir === 'desc' ? sc.desc : sc.asc}. Press again to ${next.dir === 'desc' ? 'go back to document order' : 'reverse'}.`);
+}
+
 // ── FR-1 per-role cell editors ────────────────────────────────────────────────
 // While a Date- or Status-role cell is focused for editing, a popover under the cell
 // offers the value: the Schedule dialog's calendar (buildDatePicker) for a date, the
@@ -14400,7 +14473,15 @@ function buildTableWidget(node, readOnly) {
   for (let c=0;c<nc;c++) {
     const ch0 = computedCells.has('0,'+c);
     const nm = model.rows[0][c] || '';
-    if (readOnly || ch0) {
+    if (node.qbase) {
+      // Slice 2: a query base's header is its sort door (mtWireQBaseSort). The state rides on the
+      // <th> as aria-sort; the inner control keeps tabindex 0 because it is not a .mt-cell, so
+      // the roving reset below never takes it out of the Tab order.
+      const as = qbaseAriaSort(node.qbase.sort, c);
+      h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${as ? ` aria-sort="${as}"` : ''}${colStyle(c)}>`
+         + `<span class="mt-qsort" data-c="${c}" role="button" tabindex="0" title="Sort by this column: ascending, descending, then document order">${mtInline(node, nm)}`
+         + `<span class="mt-qsort-ind" aria-hidden="true">${as === 'ascending' ? ' ↑' : as === 'descending' ? ' ↓' : ''}</span></span></th>`;
+    } else if (readOnly || ch0) {
       const ce = ch0 ? ' contenteditable="false" tabindex="0" aria-readonly="true"' : '';
       h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ce}>${mtInline(node, nm)}</th>`;
     } else {
@@ -14465,6 +14546,7 @@ function buildTableWidget(node, readOnly) {
   host.innerHTML = h;
   mtWireBaseChrome(host, node);
   mtWireQBaseEdit(host, node);   // Phase C: property cells write through (before the readOnly return)
+  mtWireQBaseSort(host, node);   // slice 2: the header sorts (same readOnly-surviving placement)
   // Seed the roving tab stop (#443): exactly one cell carries tabindex 0 so Tab enters the
   // grid at a predictable cell (the first data cell, falling back to any cell — e.g. a
   // read-only query base whose only cells are computed). Applies to readOnly grids too.
@@ -31423,14 +31505,20 @@ function evalMath(input, vars = {}) {
   // Comparison: returns 1 (true) or 0 (false). Only one comparison per cmp()
   // call — chaining (a < b < c) is not supported; use ternary for that.
   function cmp() {
-    const left = addSub();
+    let left = addSub();
     const ch = peek();
     let op = '';
     if ((ch === '>' || ch === '<') ) { op = eat(); if (peek() === '=') op += eat(); }
     else if (ch === '=' && s[pos + 1] === '=') { op = eat() + eat(); }
     else if (ch === '!' && s[pos + 1] === '=') { op = eat() + eat(); }
     if (!op) return left;
-    const right = addSub();
+    let right = addSub();
+    // A NaN side is no verdict (→ the final isNaN gate → null), as and()/or() propagate it.
+    if (isNaN(left) || isNaN(right)) return NaN;
+    // Compare what the pill shows: formatMathResult prints at most 10 s.f., so snap non-integers to 12
+    // (never fewer than their integer digits) to wash out float dust; integers and ±Infinity stay exact.
+    const snap = x => Number.isInteger(x) || !isFinite(x) ? x : parseFloat(x.toPrecision(Math.max(12, Math.ceil(Math.log10(Math.abs(x))))));
+    left = snap(left); right = snap(right);
     if (op === '>')  return left > right  ? 1 : 0;
     if (op === '>=') return left >= right ? 1 : 0;
     if (op === '<')  return left < right  ? 1 : 0;
@@ -32111,8 +32199,19 @@ function simulateChance(outcomes, op, t) {
   let n = 0; for (const x of xs) if (test(x)) n++;
   return n / xs.length * 100;
 }
-const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5, cheap enough per render.
-                         // ponytail: raise if a bigger sample is shown to be needed; memoize only if it lags.
+const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5.
+// Work cap for one simulate(): trials x dice rolled per trial. rollParsed costs ~1 us a die, so
+// one evaluation stays near half a second at the top (20000 trials of 25d6), paid once per input since
+// _simMemo holds the result; above it the call is #ERR (999d6! x 20000 froze the tab for 26 s).
+const SIM_WORK_MAX = 500000;
+// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+function simDiceCost(terms) {
+  let n = 0;
+  for (const t of terms) if (t.kind === 'dice') n += t.count * (t.exploding ? Math.min(100, t.sides / (t.sides - 1)) : 1);
+  return n;
+}
+// simulate() results by call text + resolved terms: a pure function of its key, so no doc reset.
+const _simMemo = new Map();
 // FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
 // across renders (a probability in your doc must not flicker) and decorrelated per distinct call.
 function hashSeedStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
@@ -36411,7 +36510,7 @@ function updateDirtyDot() {
   updateSaveStatus();   // #1268: the same save truth drives the toolbar chip
 }
 function markDirty() {
-  dirty = true;
+  dirty = true; _editGen++;
   // UXP-126: the first edit to the Examples doc means the user engaged — it becomes their doc, so
   // stop suppressing autosave and drop the "these are examples" banner. (Guarded so it's a no-op
   // in normal use; the flag only exists during a fresh first-run.)
@@ -36424,7 +36523,7 @@ function markDirty() {
   updateDirtyDot();
   scheduleAutosave();
   scheduleVarPanelUpdate();
-  if (agendaOpen) renderAgenda();
+  scheduleAgendaRender();
 }
 // markDirty fires per keystroke (prose and base cells alike); rebuilding the whole
 // variables panel synchronously on every one is work the user can't perceive — and a
@@ -36437,6 +36536,17 @@ function scheduleVarPanelUpdate() {
   _varPanelTimer = setTimeout(() => {
     _varPanelTimer = null;
     if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
+  }, 150);
+}
+// The open agenda strip, likewise: renderAgenda gathers every dated point (~100 ms at 10k points),
+// so a keystroke schedules one trailing rebuild. Callers that must see the strip now call
+// renderAgenda() directly, which cancels the pending one.
+let _agendaTimer = null;
+function scheduleAgendaRender() {
+  if (!agendaOpen || _agendaTimer) return;
+  _agendaTimer = setTimeout(() => {
+    _agendaTimer = null;
+    if (agendaOpen) renderAgenda();
   }, 150);
 }
 
@@ -36632,6 +36742,14 @@ function markClean() {
   updateDirtyDot();
   updateSaveStatus();   // #1268: a save-to-file clears the unsaved-to-disk chip too
 }
+// Pure: what a write that just landed may claim. It serialized document `doc0` at edit generation
+// `gen0`. If another document is open now it says nothing about that one ('swapped'); if an edit
+// landed during the await the file lacks it ('edited': stay dirty, so the debounce that edit
+// scheduled writes again); only otherwise is the document clean.
+function writeOutcome(gen0, gen1, doc0, doc1) {
+  if (doc0 !== doc1) return 'swapped';
+  return gen0 === gen1 ? 'clean' : 'edited';
+}
 // Pure: the user-facing name for a stored filename , drop the .opml extension and
 // show the placeholder for the unsaved sentinel. The extension is an implementation
 // detail (the app owns its files); users see/edit the bare name. Node-testable.
@@ -36794,6 +36912,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // reported points that no longer existed (measured: 3 selected, 0 of them in the new document).
   selectedIds.clear(); selAnchorId = null; selFocusId = null;
   clearTimeout(searchDebounce);
+  clearTimeout(_agendaTimer); _agendaTimer = null;   // a pending agenda rebuild belongs to the outgoing doc
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
   // #1581: the check chips' last verdicts belong to the OUTGOING document. Ids repeat across copies
@@ -36864,24 +36983,34 @@ async function newFile() {
     validate: () => true,   // blank is fine → falls back to a default name
     onSubmit: async v => {
       const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
-      // Leave the outgoing document a restore point. Order matters twice over:
-      //   · flush first, so the captured payload is the CURRENT document and not one up to
-      //     800ms stale (scheduleAutosave's debounce);
-      //   · capture BEFORE adoptDoc, whose own scheduleAutosave overwrites AUTOSAVE_KEY in place;
-      //   · stash AFTER adoptDoc, so root.docId is the new identity, and REKEY the payload to it.
-      // Without the rekey, earlierVersionForCurrentDoc's mis-keyed-entry guard rejects the entry
-      // (it re-checks the embedded docId against the store key). This is the reopenWorkspaceDoc
-      // unknownIdentity precedent: the discarded document becomes THIS document's earlier version.
-      flushPendingAutosave();
-      let outgoing = null;
-      try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
-      adoptDoc(mkRoot(), { fileName: fname });
-      if (outgoing) {
-        const rekeyed = rekeyPayloadDocId(outgoing, root.docId);
-        if (rekeyed) await stashPayloadAsPrev(rekeyed, root.docId);
-      }
+      await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });
     },
   });
+}
+
+// adoptDoc, leaving the outgoing document a restore point: New and both File > Open paths. In default
+// mode the outgoing document lives only in AUTOSAVE_KEY, and the incoming one's first autosave
+// overwrites it in place under a different docId, where earlierVersionForCurrentDoc never looks.
+// Order matters twice over:
+//   · flush first, so the captured payload is the CURRENT document and not one up to
+//     800ms stale (scheduleAutosave's debounce);
+//   · capture BEFORE adoptDoc, whose own scheduleAutosave overwrites AUTOSAVE_KEY in place;
+//   · stash AFTER adoptDoc, so root.docId is the new identity, and REKEY the payload to it.
+// Without the rekey, earlierVersionForCurrentDoc's mis-keyed-entry guard rejects the entry
+// (it re-checks the embedded docId against the store key). This is the reopenWorkspaceDoc
+// unknownIdentity precedent: the discarded document becomes THIS document's earlier version.
+// A shared snapshot never writes AUTOSAVE_KEY (that slot holds the user's own document), so the
+// outgoing snapshot is captured from memory instead.
+async function adoptDocWithRestorePoint(newRoot, opts) {
+  flushPendingAutosave();
+  let outgoing = null;
+  if (loadedFromEmbed) outgoing = capturePayloadOf(root);
+  else { try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {} }
+  adoptDoc(newRoot, opts);
+  if (outgoing) {
+    const rekeyed = rekeyPayloadDocId(outgoing, root.docId);
+    if (rekeyed) await stashPayloadAsPrev(rekeyed, root.docId);
+  }
 }
 
 // Rename the current outline from the menu header. On a Chromium file handle the
@@ -36953,14 +37082,14 @@ async function openFile() {
       const [newHandle] = picked.value;
       const file = await newHandle.getFile();
       const text = await file.text();
-      adoptDoc(fromOpml(text), { fileName: file.name, fileHandle: newHandle });
+      await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name, fileHandle: newHandle });
     } catch(e) { if (e.name!=='AbortError') flashError('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='.opml,text/x-opml,application/xml,text/xml';
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
-      try { adoptDoc(fromOpml(await file.text()), { fileName: file.name }); }
+      try { await adoptDocWithRestorePoint(fromOpml(await file.text()), { fileName: file.name }); }
       catch(e) { flashError('Invalid file: '+e.message); }
     };
     inp.click();
@@ -37031,11 +37160,17 @@ async function writeH(h) {
     // sync-safety: a folder-backed save uses the atomic temp+move path and re-anchors;
     // a plain single-file save (Save / Save As, h is not the workspace file) keeps the
     // direct write — there's no folder handle to move() within and no sync race to guard.
+    const gen0 = _editGen, doc0 = root.docId, opml = withFoldedActive(() => toOpml(root));
     if (workspaceDir && h === workspaceFile) {
-      await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root)));
-      markClean(); await anchorWorkspaceFile(); return true;
+      await safeWriteOpml(workspaceDir, fileName, opml);
+      const outcome = writeOutcome(gen0, _editGen, doc0, root.docId);
+      if (outcome === 'clean') markClean();
+      if (outcome !== 'swapped') await anchorWorkspaceFile();
+      return true;
     }
-    const w = await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true;
+    const w = await h.createWritable(); await w.write(opml); await w.close();
+    if (writeOutcome(gen0, _editGen, doc0, root.docId) === 'clean') markClean();
+    return true;
   }
   catch(e) {
     if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the folder. Reconnect, or use Save as to keep your work.');
@@ -37308,6 +37443,12 @@ function bootPrefersFile({ diskModified, knownFileMod, localSavedAt }) {
   const known = Number(knownFileMod) || 0;
   if (known > 0) return disk > known;              // same filesystem clock — robust
   return disk >= (Number(localSavedAt) || 0);      // legacy fallback (no recorded mtime)
+}
+// Pure: do two toOpml() outputs hold the same document? Ignores <dateModified>, stamped fresh on
+// every serialize, so a boot copy that only moved view state never reads as unsaved.
+function sameSavedOpml(a, b) {
+  const body = s => String(s).replace(/<dateModified>[^<]*<\/dateModified>/, '');
+  return body(a) === body(b);
 }
 
 // Pure: the temp filename for an atomic write. We write here, then move() over the
@@ -37733,7 +37874,7 @@ async function reopenWorkspaceDoc(dir, name) {
   const fileIsAuthoritative = bootPrefersFile({ diskModified: file.lastModified, knownFileMod, localSavedAt: lastAutosaveSavedAt() });
   let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
   const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
-  let restoreFocusId = null;
+  let restoreFocusId = null, localAhead = false;
   if (localPayload) {
     try {
       const lp = JSON.parse(localPayload);
@@ -37789,6 +37930,7 @@ async function reopenWorkspaceDoc(dir, name) {
     }
     if (root && root.docId && fileRoot.docId && root.docId === fileRoot.docId) {
       fileHandle = fh; workspaceFile = fh; fileName = name; // same document, a real newer local edit → keep it
+      localAhead = !sameSavedOpml(toOpml(root), toOpml(fileRoot));   // the file lacks it (closed inside the debounce), unless only view state moved
       renderFileName(); updateTitle();
     } else {
       // Different document, OR a file with no docId (a legacy/other-tool file that no
@@ -37829,6 +37971,7 @@ async function reopenWorkspaceDoc(dir, name) {
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
   _wsKnownSize = file.size || 0;                         // #840: size fingerprint rides the same anchor
+  if (localAhead) markDirty();                           // after the anchor: the debounce writes the kept copy, checked against it
   startWorkspaceWatch();                                 // sync-safety: watch the reopened file
   _wsWarned = false;
   return true;
@@ -37988,9 +38131,10 @@ async function switchWorkspaceDoc(name) {
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);          // stop the debounce firing against the new doc
     const outName = fileName;
-    const outOpml = withFoldedActive(() => toOpml(root));
+    let gen0;
     try {
-      await safeWriteOpml(workspaceDir, outName, outOpml);   // atomic write to the outgoing file
+      // atomic write to the outgoing file; again if an edit landed during it, since the swap below discards root
+      do { gen0 = _editGen; const outOpml = withFoldedActive(() => toOpml(root)); await safeWriteOpml(workspaceDir, outName, outOpml); } while (gen0 !== _editGen);
       markClean();
     } catch (e) {
       // Don't silently swap away from unsaved work if we couldn't save it.
@@ -38034,7 +38178,7 @@ async function newWorkspaceDoc() {
   // silently discard them (the old DISCARD prompt was wrong for an auto-saving doc).
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);
-    try { await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); markClean(); }
+    try { let gen0; do { gen0 = _editGen; await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); } while (gen0 !== _editGen); markClean(); }
     catch (_) { if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving the current document failed, so creating a new one would lose your recent edits. Continue anyway, or stay?', confirmLabel: 'Continue and lose edits', cancelLabel: 'Stay' })) return; }
   } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
   // idea 6b: prompt for a name instead of auto-creating "outline.opml" (the single-file path lets
@@ -38240,7 +38384,7 @@ async function safeWriteOpml(dir, name, opml) {
 // us (folder sync from another device, or another app), we DON'T clobber: a clean doc
 // reloads losslessly; a dirty doc opens the reconcile prompt (keep mine / load theirs /
 // save a copy). The write itself is ATOMIC (safeWriteOpml: temp + move). A real-disk
-// write counts as saved → markClean, then we re-anchor. On lost access it degrades.
+// write that holds every edit counts as saved → markClean (writeOutcome), then we re-anchor. On lost access it degrades.
 async function flushWorkspaceFile() {
   if (!workspaceFile) return;
   if (_wsReconciling) return;                      // a prompt is open — don't write until the user decides
@@ -38261,10 +38405,13 @@ async function flushWorkspaceFile() {
       }
     }
     _wsForceWrite = false;
+    const gen0 = _editGen, doc0 = root.docId;
     const opml = withFoldedActive(() => toOpml(root));
     await safeWriteOpml(workspaceDir, fileName, opml);
-    markClean();
-    await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified
+    const outcome = writeOutcome(gen0, _editGen, doc0, root.docId);
+    if (outcome === 'swapped') { _wsPending = false; return; }   // the swap flushed and anchored its own docs; a re-run would rewrite the new one
+    if (outcome === 'clean') markClean();          // 'edited': stays dirty, so the debounce that edit scheduled writes it (or _wsPending, if it fires mid-write)
+    await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified, either way
     refreshOwnDocInIndex();                         // §5.4: fold the just-written doc into the index (throttled)
   } catch (e) {
     degradeWorkspace();
@@ -42179,6 +42326,7 @@ function mkAgChip(it, kind) {
 // (not markDirty) persists the prefs to localStorage without dirtying the document.
 
 function renderAgenda() {
+  clearTimeout(_agendaTimer); _agendaTimer = null;   // this paint supersedes a scheduled one
   const strip = document.getElementById('agenda-strip');
   if (!strip) return;
   strip.innerHTML = '';
@@ -45196,7 +45344,7 @@ const GUIDE = [
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
-    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
+    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. Click a column's header to sort by it: once for ascending, again for descending, a third time for document order (Enter on a focused header does the same). A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
     related:['query','base-views','tables','bases-overview','list-table-view'],
     examples:[
       { syn:'/querybase',            desc:'create one from the / menu' },
@@ -45205,7 +45353,7 @@ const GUIDE = [
     ] },
   { id:'list-table-view', cat:'todos',
     title:'See a list as a table',
-    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, filter or pick columns, click the strip above the table: Sort rows takes a column name and desc, Show as columns has a box per property to tick or untick (formula columns are still typed under Columns), a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
+    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, click a column's header (or press Enter on it): once for ascending, again for descending, a third time for document order. To filter or pick columns, click the strip above the table: Sort rows also takes a column name and desc, Show as columns has a box per property to tick or untick (formula columns are still typed under Columns), a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
     related:['querybase','bases-overview','properties','addrow'],
     examples:[
       { syn:'\u002b Table view',            desc:'at the end of a list whose points share properties', ctl:'Show list as table view' },
@@ -48423,8 +48571,12 @@ function scheduleAutosave() {
 function writeAutosavePayloadNow() {
   autosaveTimer = null;
   const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
-  if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
-  if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+  // A shared snapshot never writes the browser slot: the embed wins every reload, so it could never
+  // read the write back, and the slot belongs to the user's OWN document on this origin.
+  if (!loadedFromEmbed) {
+    if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
+    if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+  }
   // #1440: `&& dirty` — the folder write follows the DOCUMENT, not the view. Ten of the twenty-four
   // scheduleAutosave() call sites are pure view state (the agenda Running/Done/Overdue filters, its
   // sort order and folder scope, the Gantt column width). Those live in the JSON payload above and
@@ -48833,6 +48985,10 @@ async function restoreEarlierVersion() {
   })) return false;
   try {
     if (!applyAutosaveData(data)) { flashError('Could not read the earlier version'); return false; }
+    // The restore swaps `root` as adoptDoc does, so the history and selection recorded against the
+    // replaced tree go too: a stale text entry would write its old text into the restored point (#1522).
+    undoStack.length = 0; redoStack.length = 0;
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
     markDirty();                 // the restored state differs from disk; let it re-autosave (and re-snapshot)
     render();
     flashHint('Restored the earlier version');
@@ -50130,7 +50286,8 @@ requestAnimationFrame(() => {
 // is authoritative and skips this entirely. A moved/deleted folder is forgotten.
 // Newer-wins rule: if the folder file is as new or newer than the localStorage autosave,
 // the folder copy wins; otherwise the local copy (which may hold post-degrade edits) is
-// kept and the write target is simply rebound so the next edit reconverges the two.
+// kept, the write target is rebound, and when the file lacks that copy the doc is marked unsaved so
+// the normal debounce writes it (a tab switch flushes it first, too).
 if (hasWorkspace) (async function reopenStoredWorkspace() {
   if (loadedFromEmbed) return;                  // a shared snapshot is authoritative
   try {

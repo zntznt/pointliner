@@ -19,7 +19,7 @@ A PR can be published two ways, and the hook is registered for both:
 | door | tools |
 |---|---|
 | Bash | `gh pr create`, `gh pr edit` |
-| GitHub MCP | `mcp__github__create_pull_request`, `mcp__github__update_pull_request` |
+| GitHub MCP | `mcp__github__create_pull_request`, `mcp__github__update_pull_request`, and the plugin-scoped `mcp__plugin_github_github__…` names (matcher `^mcp__.*github.*__(create\|update)_pull_request$`) |
 
 **This is the #1130 fix, and the MCP half is the important one.** The hook originally
 matched `Bash` only, so every PR opened through the MCP tools bypassed it completely
