@@ -2252,7 +2252,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `importCellValue` — A cell's value: strip surrounding quotes, and reduce a currency/thousands/percent-formatted number
 - `importKeyName` — A header cell → a property key the engine can reference (evalMath idents are [a-z0-9_], and
-- `importSplitRow` — Split one delimited line. Tab-separated is a plain split (Excel/Sheets clipboard is TSV and never
+- `importSplitRows` — #1700: read delimited text into rows, RFC 4180 style. A cell that OPENS with a quote may hold the
+- `importSplitRow` — One delimited line (the first row of it).
 - `sniffDelimited` — Does this text look like a delimited table? Returns the delimiter ('\t' or ',') or null. Strict on
 - `tableToPoints` — Parse a delimited table into ONE heading subtree: row 1 is the header (its columns name the props),
 

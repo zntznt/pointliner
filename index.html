@@ -39467,21 +39467,28 @@ function importCellValue(v) {
 function importKeyName(h) {
   return String(h == null ? '' : h).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
-// Split one delimited line. Tab-separated is a plain split (Excel/Sheets clipboard is TSV and never
-// quotes); comma-separated is quote-aware so a "a, b" cell survives, matching how sheets export CSV.
-function importSplitRow(line, delim) {
-  if (delim === '\t') return String(line).split('\t').map(c => c.trim());
-  const out = []; let cur = '', q = false;
-  const s = String(line);
+// #1700: read delimited text into rows, RFC 4180 style. A cell that OPENS with a quote may hold the
+// delimiter, a doubled quote ("" = one ") or a newline, so our own CSV export and Excel's TSV clipboard
+// (both quote a multi-line cell) read back as one cell, not two points. Quotes elsewhere are literal
+// (5" pipe). Blank lines are dropped, as before. Pure.
+function importSplitRows(text, delim) {
+  const s = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  const rows = []; let row = [], cur = '', q = false;
+  const cell = () => { row.push(cur.trim()); cur = ''; };
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (q) { if (ch === '"') { if (s[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === ',') { out.push(cur.trim()); cur = ''; }
+    else if (ch === '"' && !cur.trim()) { cur = ''; q = true; }
+    else if (ch === delim) cell();
+    else if (ch === '\n') { cell(); rows.push(row); row = []; }
     else cur += ch;
   }
-  out.push(cur.trim());
-  return out;
+  cell(); rows.push(row);
+  return rows.filter(r => r.length > 1 || r[0]);
+}
+// One delimited line (the first row of it).
+function importSplitRow(line, delim) {
+  return importSplitRows(line, delim)[0] || [''];
 }
 // Does this text look like a delimited table? Returns the delimiter ('\t' or ',') or null. Strict on
 // purpose: 2+ non-blank lines, 2+ columns, and a column count the FIRST row shares with all but at
@@ -39489,12 +39496,16 @@ function importSplitRow(line, delim) {
 // (a paste with tabs is unambiguously a sheet). Runs only inside the Import dialog, after the OPML
 // sniff and BEFORE Markdown, so a `#`/`-`/`|` Markdown doc (1 column under these delimiters) is untouched.
 function sniffDelimited(text) {
-  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) return null;
   for (const delim of ['\t', ',']) {
-    const counts = lines.map(l => importSplitRow(l, delim).length);
+    const rows = importSplitRows(text, delim);
+    if (rows.length < 2) continue;
+    // #1700: two rows of two cells is rectangular by accident for prose ("Dear Bob, thanks for lunch").
+    // With one data row, a comma table must not read as sentences: no cell of 3+ words or ending . ! ?
+    // A cell that opens with a quote is CSV evidence prose lacks (our own export quotes), so it waives this.
+    if (delim === ',' && rows.length === 2 && !/(^|,)\s*"/m.test(String(text)) && rows.flat().some(c => /\S\s+\S+\s+\S/.test(c) || /[.!?]$/.test(c))) continue;
+    const counts = rows.map(r => r.length);
     const cols = counts[0];
-    if (cols >= 2 && counts.filter(c => c === cols).length >= Math.max(2, lines.length - 1)) return delim;
+    if (cols >= 2 && counts.filter(c => c === cols).length >= Math.max(2, rows.length - 1)) return delim;
   }
   return null;
 }
@@ -39504,9 +39515,8 @@ function sniffDelimited(text) {
 // columns thus become number properties a + Total / check reads. Returns { points, skipped } to match
 // markdownToPoints so it rides the same appendOpmlSubtrees path. delim from sniffDelimited.
 function tableToPoints(text, delim) {
-  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) return { points: [], skipped: [] };
-  const rows = lines.map(l => importSplitRow(l, delim));
+  const rows = importSplitRows(text, delim);
+  if (rows.length < 2) return { points: [], skipped: [] };
   const ncol = rows[0].length;
   const used = new Set();
   const keys = rows[0].map((h, i) => {
@@ -39519,11 +39529,18 @@ function tableToPoints(text, delim) {
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
     let t = (cells[0] || '').trim() || ('Row ' + r);
+    const direct = [];
     for (let c = 1; c < ncol; c++) {
       const v = importCellValue(cells[c] || '');
-      if (v !== '') t += ' {prop ' + keys[c] + ': ' + v + '}';
+      if (v === '') continue;
+      // #1700: a brace in the value would close (x}y) or unbalance the {prop} token, so write the prop
+      // the token would have promoted to, through the same propDeclParts gate. A reserved key keeps the token.
+      const pd = /[{}]/.test(v) && propDeclParts('prop ' + keys[c] + ': ' + v);
+      if (pd) direct.push(pd); else t += ' {prop ' + keys[c] + ': ' + v + '}';
     }
-    heading.children.push(mkNode(t, 'ul'));
+    const pt = mkNode(t, 'ul');
+    for (const pd of direct) setProp(pt, pd.key, pd.val);
+    heading.children.push(pt);
   }
   return heading.children.length ? { points: [heading], skipped: [] } : { points: [], skipped: [] };
 }
