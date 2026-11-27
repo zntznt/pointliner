@@ -21762,7 +21762,7 @@ test('#1528 linkText takes the document a string came FROM, and only the bare fo
   assert.match(lt, /const owner = docId \|\| home;/, "a bare id belongs to the string's home document");
   assert.match(lt, /workspaceIndex\?\.titles\?\.get\(owner\)/,
     "the index lookup goes through the owner -- reading the token's own docId there was the defect");
-  assert.match(lt, /linkText\(title, depth \+ 1, undefined, owner\)/,
+  assert.match(lt, /linkText\(title, depth \+ 1, undefined, owner, hide\)/,
     'and the recursion carries it, so a title inside a foreign title stays in that document');
 });
 
@@ -21778,7 +21778,7 @@ test('#1528 every sink that reads a foreign title is anchored on the document it
     'linkText(nd.title, 0, undefined, nd.docId)',   // the [[ picker's other-doc rows
     'linkText(title, 0, undefined, docId)',         // the CF-4 cross-doc backlink rows
     'linkText(title, 0, undefined, docId)',         // renderCrossLinkPill's caption
-    'linkText(title, depth + 1, undefined, owner)', // linkText's own recursion into a foreign title
+    'linkText(title, depth + 1, undefined, owner, hide)', // linkText's own recursion into a foreign title (#1698: carries the hide set)
   ], 'a foreign title read with no anchor resolves its ids in the wrong document');
   // the fourth surface is a COLLECTOR, not a render sink: the cross-doc unlinked-mention rows are
   // built from displayText, whose display arm calls linkText -- so it needs the anchor too. Its
@@ -22437,7 +22437,7 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   const plain = c.mkRoot();
   plain.children.push(c.mkNode('just prose'), decl('g1', 'gold', '100'));
   assert.deepEqual(host(c.exportExclusionImpact(plain, c.pruneNoexport(plain))),
-    { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 });
+    { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], lostFootnotes: 0, newBroken: 0 });
 
   // a named rule declared only in the excluded subtree is named too: like a variable, it fails
   // LOUDLY in the copy (the .brace-attempt cue), so the exporter should hear about it.
@@ -22493,6 +22493,47 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   inner.children.push(c.mkNode('unrelated prose'), sc3);
   assert.equal(c.exportExclusionImpact(inner, c.pruneNoexport(inner)).newBroken, 0,
     'a link wholly inside the exclusion is not a new break: its source left too');
+});
+
+// #1698: the head stores rode along unpruned, so a footnote cited only by an excluded point shipped
+// in the shareable file; and a caption-less link to an excluded point printed its title in prose.
+test('#1698 pruneNoexport drops a footnote cited only by excluded points, keeps the rest', () => {
+  const r = c.mkRoot();
+  const sec = c.mkNode('Secret [^f1] and [^f2]'); sec.noexport = true;
+  r.children.push(c.mkNode('public [^f2]'), sec);
+  r.footnotes = [{ id: 'f1', text: 'SECRET FOOTNOTE' }, { id: 'f2', text: 'shared note' }, { id: 'f3', text: 'orphan' }];
+  const p = c.pruneNoexport(r);
+  assert.deepEqual(host(p.footnotes.map(f => f.id)), ['f2', 'f3'],
+    'cited only by the excluded point goes; cited by a kept point stays; an orphan is not about the exclusion');
+  assert.ok(!c.toOpml(p).includes('SECRET FOOTNOTE'), 'the shareable copy does not carry it');
+  assert.equal(r.footnotes.length, 3, 'the live store is not mutated: the saves run on it');
+  assert.equal(c.exportExclusionImpact(r, p).lostFootnotes, 1, 'and the toast can say so');
+  const plain = c.mkRoot(); plain.children.push(c.mkNode('x')); plain.footnotes = [{ id: 'o', text: 'orphan' }];
+  assert.deepEqual(host(c.pruneNoexport(plain).footnotes), host(plain.footnotes), 'nothing excluded, nothing dropped');
+  assert.match(fnBody(_src, 'exportSelfContainedHtml'), /impact\.lostFootnotes/, 'the toast reads the count');
+});
+
+test('#1698 a caption-less link to an excluded point never prints its title in a prose export', () => {
+  const r = c.mkRoot();
+  const sec = c.mkNode('Secret plan'); sec.noexport = true;
+  const inner = c.mkNode('Hidden child'); sec.children.push(inner);
+  const kept = c.mkNode(`titled after [[#${inner.id}|]]`);
+  const pub = c.mkNode(`see [[#${sec.id}|]], [[#${sec.id}|my caption]] and [[#${kept.id}|]]`);
+  pub.note = `note [[#${sec.id}|]]`;
+  r.children.push(pub, kept, sec);
+  assert.deepEqual(host([...c.noexportIds(r)].sort()), [sec.id, inner.id].sort(), 'the whole excluded subtree');
+  c._context.__r1698 = r;
+  vm.runInContext('root = __r1698; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    const md = c.toMarkdown(r), txt = c.toPlainText(r), html = c.docToReadonlyHtml(r);
+    for (const [name, out] of [['markdown', md], ['text', txt], ['read-only html', html]]) {
+      assert.ok(!/Secret plan|Hidden child/.test(out), name + ' leaks an excluded title: ' + out);
+      assert.ok(out.includes('a point not in this export'), name + ' names the target neutrally: ' + out);
+    }
+    assert.ok(md.includes(`[my caption](#${sec.id})`), 'an explicit caption is the author\'s own text and still wins');
+    assert.ok(md.includes('[titled after a point not in this export]'), 'the hide set rides the title recursion');
+    assert.match(c.linkText(`[[#${sec.id}|]]`), /Secret plan/, 'on screen, with no hide set, the title still resolves');
+  } finally { vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context); }
 });
 
 test('the HTML export wiring: pruned inside one folded pass, and no save path gained a prune', () => {
@@ -22554,7 +22595,7 @@ test('#1111 the WIRING, not just the cores — two mutations that survived until
     'the markdown emit must pass the resolved document file, not an empty string');
   assert.match(tm, /const docFileOf = \(docId\) => \{[\s\S]{0,320}nameByDocId\?\.get\(docId\)/,
     'and docFileOf must resolve a foreign docId to its NAME, falling back to the id');
-  assert.match(tm, /const lt = \(str\) => linkText\(str, 0, mdLink\);/, 'the emit must actually be installed');
+  assert.match(tm, /const lt = \(str\) => linkText\(str, 0, mdLink, undefined, hide\);/, 'the emit must actually be installed');
 
   // 2. The plain-text door going silent again. `exportedNote(root)` without the flag returns '',
   //    so dropping the argument reverts the report while every core test stays green.
