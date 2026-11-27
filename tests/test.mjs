@@ -41323,6 +41323,44 @@ test('table view slice 2: the header door is rendered, wired both ways, and writ
   assert.ok(by.includes('markDirty()') && by.includes('refreshTable(node)') && by.includes('flashHint('), 'persisted, repainted, announced');
 });
 
+// #1704: a list's table view had no arrow grammar (its readOnly build skips mtWireCells), so ArrowUp,
+// ArrowDown at the edges and Shift+Tab from the first cell dropped focus to <body>.
+test('#1704 query base arrows: the authored grid grammar, the header as row -1', () => {
+  const T = (k, i, cc) => host(c.qbaseArrowTarget(k, i, cc, 2, 3));
+  assert.deepEqual(T('ArrowUp', 1, 2), { i: 0, c: 2 }, 'up a row, same column');
+  assert.deepEqual(T('ArrowUp', 0, 1), { i: -1, c: 1 }, 'from the first row up to that column\'s sort header');
+  assert.equal(T('ArrowUp', -1, 1), 'prev', 'from the header out to the point above');
+  assert.deepEqual(T('ArrowDown', -1, 1), { i: 0, c: 1 }, 'from the header down into the first row');
+  assert.deepEqual(T('ArrowDown', 0, 0), { i: 1, c: 0 });
+  assert.equal(T('ArrowDown', 1, 0), 'next', 'from the last row out to the point below');
+  assert.equal(host(c.qbaseArrowTarget('ArrowDown', -1, 0, 0, 3)), 'next', 'an empty table: header down leaves it');
+  assert.equal(T('ArrowLeft', 1, 0), null, 'the left edge stops');
+  assert.deepEqual(T('ArrowLeft', 1, 2), { i: 1, c: 1 });
+  assert.equal(T('ArrowRight', 0, 2), null, 'the right edge stops');
+  assert.deepEqual(T('ArrowRight', -1, 0), { i: -1, c: 1 }, 'the header row moves across too');
+  assert.equal(T('Enter', 0, 0), null);
+});
+
+test('#1704 query base: arrows and the Tab/Enter edges are wired, and a commit repaints the outline row', () => {
+  const ed = fnBody(_src, 'mtWireQBaseEdit');
+  assert.ok(ed.includes('mtWireQBaseArrows(host, node);'), 'the cells get the arrow grammar');
+  const ar = fnBody(_src, 'mtWireQBaseArrows');
+  assert.ok(ar.includes('isAtFirstLine(cell)') && ar.includes('getCaretOffset(cell)'), 'the caret moves inside the text first');
+  assert.ok(ar.includes('qbaseArrowNav(host, node, e, rows.indexOf('), 'and the cell routes through the pure target');
+  assert.ok(fnBody(_src, 'qbaseArrowNav').includes('qbaseArrowTarget(e.key, i, c, nRows,'), 'the nav calls the core');
+  assert.ok(fnBody(_src, 'mtWireQBaseSort').includes('qbaseArrowNav(host, node, e, -1, c)'), 'the header is row -1');
+  assert.ok(fnBody(_src, 'qbaseFocusAt').includes('mtFocusCell(node, +tr.dataset.r, c)'), 'landing re-asserts after a rebuild (#1468)');
+  const edges = between(ed, 'if (next) next.focus();', "host.addEventListener('focusout'");
+  assert.ok(edges.includes('else if (e.shiftKey) qbaseFocusAt(host, node, -1,'), 'Shift+Tab / Shift+Enter past the top reach the header');
+  assert.ok(edges.includes("else if (e.key === 'Enter') { cell.blur(); cell.focus(); }"), 'Enter on the last row keeps its place');
+  assert.ok(!/else cell\.blur\(\);/.test(edges), 'no edge blurs to <body>');
+  assert.ok(fnBody(_src, 'qbaseRenameCommit').includes('qbaseRepaintSource(src);'), 'a rename repaints the point\'s row');
+  const rs = fnBody(_src, 'qbaseRepaintSource');
+  assert.ok(rs.includes('repaintNodeContent(src)') && rs.includes('refreshRowChrome(id)'), 'its text and the props row outside it');
+  const fo = between(ed, "host.addEventListener('focusout'", 'mtWireQBaseArrows(host, node);');
+  assert.ok(/markDirty\(\);\s*qbaseRepaintSource\(src\);/.test(fo), 'a property commit repaints the point\'s row');
+});
+
 // ─── untrusted-file hardening: a shared OPML's sidecar records are attacker-shaped ───────────────
 // arrAttr used to check only "is an array", so every record inside reached the pill renderers as
 // the file wrote it. Each test below is a shape that, before its fix, injected markup or threw out
