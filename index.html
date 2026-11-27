@@ -39255,7 +39255,9 @@ function toMarkdown(rootNode) {
     return (nm ? String(nm).replace(/\.opml$/i, '') : docId) + '.md';
   };
   const mdLink = (text, docId, id) => mdLinkOut(text, id, docFileOf(docId));
-  const hide = noexportIds(rootNode);                      // #1698: never print an excluded point's title
+  // #1698: never print an excluded point's title. From the LIVE root, not rootNode: linkText resolves
+  // titles in the open document, and a selection export passes only the selected points.
+  const hide = noexportIds(root);
   const lt = (str) => linkText(str, 0, mdLink, undefined, hide);
   // never a leading blank line, and never two in a row
   const sep = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
@@ -39926,7 +39928,7 @@ const RO_EXPORT_CSS =
 function docToReadonlyHtml(rootNode) {
   const varMap = collectVars(rootNode);
   const title = escHtml(readonlyDocTitle(rootNode));
-  const hide = noexportIds(rootNode);   // #1698: a link to an excluded point never prints its title
+  const hide = noexportIds(root);   // #1698: a link to an excluded point never prints its title (live root, as in toMarkdown)
   const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap, hide)).join('');
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -39942,7 +39944,7 @@ function toPlainText(rootNode) {
   const fnStore = (rootNode && rootNode.footnotes) || [];   // Phase A: doc-level footnote store
   const fnOrder = footnoteOrder(rootNode);                  // id -> document-order number
   const fnEmitted = new Set();                              // a reused footnote defines once, at first reference
-  const hide = noexportIds(rootNode);                       // #1698: never print an excluded point's title
+  const hide = noexportIds(root);                           // #1698: the live root, as in toMarkdown
   const lt = (str) => linkText(str, 0, undefined, undefined, hide);
   function emit(node, depth) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree

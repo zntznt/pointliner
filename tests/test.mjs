@@ -22533,6 +22533,9 @@ test('#1698 a caption-less link to an excluded point never prints its title in a
     assert.ok(md.includes(`[my caption](#${sec.id})`), 'an explicit caption is the author\'s own text and still wins');
     assert.ok(md.includes('[titled after a point not in this export]'), 'the hide set rides the title recursion');
     assert.match(c.linkText(`[[#${sec.id}|]]`), /Secret plan/, 'on screen, with no hide set, the title still resolves');
+    // a SELECTION export passes only the chosen points; the excluded target lives outside them
+    const sel = c.toMarkdown({ children: [pub] });
+    assert.ok(!/Secret plan/.test(sel) && sel.includes('a point not in this export'), 'a selection export still hides it: ' + sel);
   } finally { vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context); }
 });
 
