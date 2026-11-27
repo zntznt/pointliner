@@ -166,6 +166,7 @@ bind nothing.
 | `user-research-2026-07-fleet2.md` | Five personas, second fleet — audiences the first six did not represent |
 | `user-research-2026-07-fleet3.md` | Six personas, third fleet, laptop — walks of life the first eleven did not cover |
 | `user-research-2026-11-panel8.md` | Driven panel #8: six trades and hobbies, every wall re-driven on main, issues #1656 to #1661 |
+| `user-research-2026-11-panel9.md` | Driven panel #9: independent cold read plus six personas on the table view and h:mm, issues #1704 to #1709 |
 
 (Deliberately shelved direction lives in the sibling `parked/`, currently the version-control
 pivot. Not stray; don't resurrect without sign-off.)

@@ -230,8 +230,8 @@ Implemented:
   **Bare only**, for the reason `isMoonExpr`'s comment already states: `replaceConvert` substitutes
   the converted number back into the expression as TEXT before `evalMath` runs, so rounding anything
   but a whole-expression call would corrupt the arithmetic composed around it. `formatMathResult` is
-  **untouched and pinned byte-identical** — it is persisted into `node.text` by table recompute, so
-  it is the lossless path. An explicit per-pill `decimals` (#946) still wins; a fmt carrying only
+  **untouched and pinned byte-identical**. (#1694: table recompute now persists through
+  `formatCellValue` at 15 s.f., so the 8 s.f. default is display only.) An explicit per-pill `decimals` (#946) still wins; a fmt carrying only
   affixes keeps them and still gets the default.
 
 - **Estimate / uncertainty fields (B2)** — `@estimate` (or the `{lo to hi}` shorthand):

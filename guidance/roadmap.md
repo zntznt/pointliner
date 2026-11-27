@@ -4,6 +4,13 @@ Derived from the feature-gap backlog and the direction decisions below. This is 
 "how we proceed" document; the gap analysis lives in `guidance/backlog.md`, and the
 discoverability / UX strategy in `guidance/ux.md`.
 
+## What to work on next
+
+The open-issue labels are the queue, so no list here can go stale:
+`gh issue list --label priority:high`, then `priority:med`, then `priority:low`.
+`standing-guard` issues are rules, not work; `experimental` issues (the live bridge) are parked
+from the main queue. Every new issue gets one of these labels when it is filed (see CLAUDE.md).
+
 ## Decisions locked
 1. **Positioning: lead with solo-RPG; the engine stays two-family (#515, decided 2026-07-13).**
    The `{…}`→pill engine keeps both families — GENERATE (dice/grammar/oracles/decks) and COMPUTE
