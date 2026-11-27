@@ -3563,6 +3563,7 @@ function textForDisplay(node) {
 // NOT applied to the depth > 0 arm - that is a link inside a title being read for its words, not a
 // link occupying a slot in the exported sentence.
 const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
+const LINK_HIDDEN_TEXT = 'a point not in this export';   // #1698: an excluded target, named in an export
 // #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
 // means. Omitted, it is the open document, which is right for every same-doc caller and was the
 // only behaviour there used to be. It is wrong for a title read out of `workspaceIndex.titles`:
@@ -3574,7 +3575,9 @@ const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
 // is same-document to THAT document, so the resolver is anchored on its docId, not on ours"
 // (#1110). This is that rule, in the shared helper, so a caller cannot forget it.
 // A QUALIFIED `[[doc#id]]` names its own document and was always correct; only the bare form moved.
-function linkText(str, depth = 0, emit, homeDocId) {
+// `hide` (#1698): ids in the OPEN document whose title an export must not print (noexportIds). Only
+// a caption-less link reads the title, so an explicit label still wins; the recursion carries it.
+function linkText(str, depth = 0, emit, homeDocId, hide) {
   if (!str || str.indexOf('[[') === -1) return str;
   const out = emit || ((text) => text);
   const home = homeDocId == null ? (root.docId || '') : homeDocId;
@@ -3595,11 +3598,12 @@ function linkText(str, depth = 0, emit, homeDocId) {
     if (depth > LINK_RESOLVE_DEPTH) return '';
     const owner = docId || home;                               // #1528: a bare id belongs to the string's home doc
     if (owner === (root.docId || '')) {                        // the OPEN document: live title
+      if (hide && hide.has(id)) return out(LINK_HIDDEN_TEXT, docId || '', id);
       const tn = nodeById(id);
-      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);
+      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner, hide) || id, docId || '', id);
     } else {                                                   // another document: workspace index
       const title = workspaceIndex?.titles?.get(owner)?.get(id);
-      if (title) return out(linkText(title, depth + 1, undefined, owner) || id, docId, id);
+      if (title) return out(linkText(title, depth + 1, undefined, owner, hide) || id, docId, id);
     }
     return out(id, docId || '', id);                           // unresolvable → bare id (better than the raw token)
   });
@@ -4540,6 +4544,14 @@ function propExprValue(raw, vars = {}) {
   const v = evalMath(s, vars);
   return (v !== null && Number.isFinite(v)) ? v : null;
 }
+// #1699: the value a property SHOWS as computed: propExprValue, except under a reserved key whose
+// value is a date, alias list or repeat phrase (`when: 10/12/2024` is a date, not 10 / 12 / 2024).
+// One home for the exemption, so the chip and the CSV export cannot disagree. Pure.
+function propFormulaValue(key, raw, vars = {}) {
+  const k = String(key || '').trim().toLowerCase();
+  if (DATE_KEYS.has(k) || k === 'when' || k === 'date' || k === ALIAS_KEY || k === REPEAT_KEY) return null;
+  return propExprValue(raw, vars);
+}
 // #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
 // 8:45 is 8.75 and compares to an 11-hour limit directly. Minutes and seconds are two digits 00-59
 // (ISO 8601, HTML time strings); hours may pass 24, as a spreadsheet's [h]:mm does. A VALUE reader
@@ -4964,8 +4976,8 @@ function reduceAgg(fn, vals) {
   if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
   if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
   if (!vals.length) return 0;
-  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (fn === 'sum') return snappedSum(vals);   // #1694
+  if (fn === 'avg') return snappedSum(vals) / vals.length;
   return 0;
 }
 function aggregateChildren(node, fn, prop, depth = 1) {
@@ -9979,13 +9991,15 @@ function mathReasonPhrase(why, expr) {
 // consumers: Calculate (which has always parsed cells this way) and Sort (which had no
 // numeric reading at all, so the same column summed to 212 and ordered 10, 100, 3, 99 —
 // two commands in one menu with two answers about what the column IS). Returns a number,
-// or null when the cell holds none. Lifted out of computeTable unchanged, parseFloat and
-// isNaN included, so Calculate's answers are byte-identical to what they were.
+// or null when the cell holds none. parseFloat and isNaN, as computeTable always read cells.
+// #1693: a grouped or currency cell ("1,000", "$5") is first reduced the way an imported
+// cell is, so it reads as the number it shows, as propScalar reads the same value as a
+// property. parseFloat alone read "1,000" as 1 and "$5" as nothing: silent wrong totals.
 function cellNum(raw) {
   const s = (raw == null ? '' : String(raw)).trim();
   if (s === '') return null;
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading, moved not rewritten
+  const n = parseFloat(importCellValue(s));
+  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading
 }
 // Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
 // numeric comparison on. Deliberately all-or-nothing: one word in the column and the
@@ -10070,7 +10084,7 @@ function computeTable(model, tblfm, vars = {}) {
   }
 
   function aggregate(fn, vals) {
-    const sum = vals.reduce((a, b) => a + b, 0);
+    const sum = snappedSum(vals);   // #1694
     if (fn === 'vsum') return sum;
     if (fn === 'vcount') return vals.length;
     if (fn === 'vmean') return vals.length ? sum / vals.length : 0;
@@ -10117,7 +10131,7 @@ function computeTable(model, tblfm, vars = {}) {
       } else if (v === ERR_UP) {
         disp = '#ERR (another cell)';
       } else {
-        disp = formatMathResult(v);
+        disp = formatCellValue(v);   // #1694: persisted, so never the 8 s.f. display cut
       }
     } catch (e) {
       if (e && e.message === 'CYCLE') disp = '#ERR (loops on itself)';
@@ -10272,14 +10286,16 @@ function renderStaticTable(block, l0, l1) {
   if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base"><i class="fa-solid fa-table-cells"></i> base</button>';
   // WAVE-2 HARD-9: a computed #ERR cell renders as plain text, not a live #ERR hashtag (see mtInline).
   const cellMd = (raw) => /^#ERR\b/.test(String(raw || '').trim()) ? escHtml(raw) : mdInline(raw || '');
+  // #1694: a computed cell holds full precision; painting rounds it like every other number
+  const paint = (key, raw) => computed.has(key) && /^-?[\d.]+(e[-+]?\d+)?$/i.test(String(raw || '').trim()) ? escHtml(formatMathResult(+raw)) : cellMd(raw);
   h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
   for (let c = 0; c < nc; c++)
-    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${cellMd(rows[0] && rows[0][c])}</th>`;
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${paint('0,' + c, rows[0] && rows[0][c])}</th>`;
   h += '</tr>';
   for (let r = 1; r < rows.length; r++) {
     h += '<tr>';
     for (let c = 0; c < nc; c++)
-      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${cellMd(rows[r] && rows[r][c])}</td>`;
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${paint(r + ',' + c, rows[r] && rows[r][c])}</td>`;
     h += '</tr>';
   }
   return h + '</table></div></div>';
@@ -10386,9 +10402,29 @@ ${(r.children.forEach(c=>nx(c,2)), out.join('\n'))}
 //
 // Shallow per node ({...n}) so the sidecar arrays are shared by reference: toOpml only reads them
 // (JSON.stringify), so a deep copy would buy nothing and cost a full traversal of every artifact.
+//
+// #1698: the doc-level footnote store rides in the head, so a footnote cited ONLY by excluded points
+// went out with the copy. It is dropped here; one no point cites at all (an orphan) is not about the
+// exclusion and stays, so a document with nothing excluded serializes exactly as before.
 function pruneNoexport(r) {
   const keep = n => n.noexport ? null : { ...n, children: (n.children || []).map(keep).filter(Boolean) };
-  return { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+  const p = { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+  if (Array.isArray(r.footnotes)) {
+    const cited = t => new Set(footnoteReport(t).filter(f => f.refCount).map(f => f.id));
+    const before = cited(r), after = cited(p);
+    p.footnotes = r.footnotes.filter(f => !before.has(f.id) || after.has(f.id));
+  }
+  return p;
+}
+
+// #1698: the ids of every point inside an excluded subtree. The prose exports resolve a link with an
+// empty label to its target's live TITLE, so a kept point linking to an excluded one printed the
+// excluded title; linkText takes this set and names such a target neutrally instead.
+function noexportIds(rootNode) {
+  const ids = new Set();
+  const all = n => { ids.add(n.id); (n.children || []).forEach(all); };
+  (function walk(n) { for (const c of (n.children || [])) c.noexport ? all(c) : walk(c); })(rootNode || {});
+  return ids;
 }
 
 // What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
@@ -10410,7 +10446,7 @@ function exportExclusionImpact(full, pruned) {
   (function walk(n) {
     for (const c of (n.children || [])) { if (c.noexport) excluded += size(c); else walk(c); }
   })(full);
-  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 };
+  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], lostFootnotes: 0, newBroken: 0 };
   const gone = (a, b) => Object.keys(a).filter(k => !(k in b));
   // Variables and rules fail LOUDLY in the copy (the .brace-attempt cue). A sequence degrades
   // QUIETLY instead: a kept point whose leading #BLOCKED keyword no longer belongs to any
@@ -10425,7 +10461,8 @@ function exportExclusionImpact(full, pruned) {
   const afterSeq = seqNames(pruned);
   const lostSeqs = [...seqNames(full)].filter(n => !afterSeq.has(n));
   const brokenCount = t => (collectLinks(t).broken || []).length;   // broken is an ARRAY of target ids
-  return { excluded, lostVars, lostRules, lostSeqs, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
+  const lostFootnotes = ((full.footnotes || []).length) - ((pruned.footnotes || []).length);   // #1698: pruneNoexport drops these
+  return { excluded, lostVars, lostRules, lostSeqs, lostFootnotes, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
 }
 
 // Encode newlines/tabs/CRs as numeric character references — XML attribute-value
@@ -15678,8 +15715,8 @@ function buildPropsArea(node) {
     }
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
-    if (!DATE_KEYS.has(propK) && propK !== 'when' && propK !== 'date' && propK !== ALIAS_KEY && propK !== REPEAT_KEY) {
-      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row
+    {
+      const ev = propFormulaValue(propK, val, rowPropVars(node));   // #1656: a row formula reads its own row
       if (ev !== null) { displayVal = formatNumDisplay(ev, null); chip.classList.add('prop-computed'); chip.title = `${val} = ${displayVal}. Click to edit`; chip.setAttribute('aria-label', `${key}: ${displayVal} (from ${val}). Click to edit properties`); }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -31297,7 +31334,7 @@ function daysInMonthOf(y, m, cal) {   // days in month m of intrinsic year y
 }
 const FN1 = Object.assign(Object.create(null), {
   sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
-  round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  round: Math.round, sin: x => noiseSnap(Math.sin(x), x), cos: x => noiseSnap(Math.cos(x), x), tan: x => noiseSnap(Math.tan(x), x),   // #1694: sin(pi) is 0
   asin: Math.asin, acos: Math.acos, atan: Math.atan,
   ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
   exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
@@ -31714,7 +31751,7 @@ function evalMath(input, vars = {}) {
       // bare-identifier child rollup avg(prop) (substituted before evalMath by expandAggExpr) is
       // untouched — avg(2, 4) is the numeric mean, avg(cost) stays the aggregation.
       if (name === 'min' || name === 'max' || name === 'avg')
-        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : args.reduce((s, a) => s + a, 0) / args.length;
+        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : snappedSum(args) / args.length;
       // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
       // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
       // A NaN operand propagates (→ the final isNaN gate → null) so a failed
@@ -31760,7 +31797,8 @@ function evalMath(input, vars = {}) {
       const op = peek();
       if (op !== '+' && op !== '-') break;
       eat();
-      v = op === '+' ? v + mulDiv() : v - mulDiv();
+      const w = mulDiv();
+      v = noiseSnap(op === '+' ? v + w : v - w, Math.max(Math.abs(v), Math.abs(w)));   // #1694
     }
     return v;
   }
@@ -31880,19 +31918,34 @@ function formatMathDisplay(v, expr, fmt) {
     : formatNumDisplay(v, fmt);
 }
 
+// #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+// absolute size at display (that printed Planck's 6.626e-34 as 0). A result under 1e-12 of its
+// operands' scale is cancellation dust (0.1+0.2-0.3, sin(pi)); 1e-12 is the 12 s.f. the comparison
+// snap in evalMath uses, so a pill and a comparison agree on what is zero.
+function noiseSnap(r, scale) {
+  return isFinite(scale) && Math.abs(r) <= 1e-12 * Math.abs(scale) ? 0 : r;
+}
+function snappedSum(vals) {
+  return noiseSnap(vals.reduce((a, b) => a + b, 0), vals.reduce((a, b) => a + Math.abs(b), 0));
+}
+
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
   // An exact integer prints in full — never round-trip it through toPrecision(10),
   // which truncates the low digits of an integer with >10 significant figures
-  // (123456789012 → 123456789000). This value is persisted into node.text by table
-  // recompute, so the corruption would be saved, not just displayed.
+  // (123456789012 → 123456789000).
   if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
   // Round to 10 significant figures to wash out floating-point noise
   const r = parseFloat(n.toPrecision(10));
-  // Snap near-zero results (e.g. sin(π) ≈ 1.2e-16 → 0)
-  if (Math.abs(r) < 1e-10 && Math.abs(n) <= 1) return '0';
   if (Number.isInteger(r) && Math.abs(r) < 1e15) return String(r);
   return parseFloat(n.toPrecision(8)).toString();
+}
+// #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
+// default (#1333) and cut a saved 1234567.89 to 1234567.9; 15 s.f. is every digit a double holds
+// reliably, so any decimal a user can type survives while 0.1+0.2 still saves as 0.3.
+function formatCellValue(n) {
+  if (!isFinite(n)) return formatMathResult(n);
+  return Number.isInteger(n) && Math.abs(n) < 1e15 ? String(n) : String(parseFloat(n.toPrecision(15)));
 }
 
 // #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
@@ -39230,7 +39283,10 @@ function toMarkdown(rootNode) {
     return (nm ? String(nm).replace(/\.opml$/i, '') : docId) + '.md';
   };
   const mdLink = (text, docId, id) => mdLinkOut(text, id, docFileOf(docId));
-  const lt = (str) => linkText(str, 0, mdLink);
+  // #1698: never print an excluded point's title. From the LIVE root, not rootNode: linkText resolves
+  // titles in the open document, and a selection export passes only the selected points.
+  const hide = noexportIds(root);
+  const lt = (str) => linkText(str, 0, mdLink, undefined, hide);
   // never a leading blank line, and never two in a row
   const sep = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
   function emit(node, depth, ordinal) {
@@ -39551,7 +39607,10 @@ function tableToPoints(text, delim) {
 // point, values frozen. The exact inverse of importSplitRow, so an exported file round-trips back
 // through the paste importer. Pure string builders, Node-testable.
 function csvCell(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  // #1699: OWASP CSV injection guard. A cell a spreadsheet would read as a formula gets a leading ',
+  // so a shared document's `=HYPERLINK(...)` title stays text. A plain number (-5, +3) is left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;   // quote + double-up, like sheet CSV
 }
 function rowsToCsv(rows) {
@@ -39575,7 +39634,7 @@ function sectionToCsvRows(node, states) {
     const val = k => {
       const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase());
       if (!p) return '';
-      const ev = propExprValue(p.val, rowPropVars(c));   // #1317/#1656: freeze a formula property to its computed value in the CSV
+      const ev = propFormulaValue(k, p.val, rowPropVars(c));   // #1317/#1656/#1699: freeze a formula to its value, as the chip shows it
       return ev !== null ? String(ev) : p.val;
     };
     rows.push([auditTitle(c.text), ...keys.map(val)]);
@@ -39860,7 +39919,7 @@ function checkVerdictHtml(v) {
   if (v === 'error') return ' <span class="ro-chk ro-err" title="check cannot be evaluated">⚠</span>';
   return '';
 }
-function nodeToReadonlyHtml(node, varMap) {
+function nodeToReadonlyHtml(node, varMap, hide) {
   if (!node || node.noexport) return '';
   const type = deriveTypeFromText(node.text) || node.type || 'ul';
   // Same two-step the Markdown export uses so the two never diverge: pills → their shown values, then
@@ -39870,7 +39929,8 @@ function nodeToReadonlyHtml(node, varMap) {
   // frozenTokenText emits result-only for a `para`, so present a para-typed VIEW of the node (its pill
   // sidecars are shared by reference, so every pill still resolves) to force clean values for any type.
   const proseView = node.type === 'para' ? node : { ...node, type: 'para' };
-  const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, (t, _d, id) => mdLinkOut(t, id, ''));
+  const roLink = (t, _d, id) => mdLinkOut(t, id, '');
+  const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, roLink, undefined, hide);
   // #1493: a code block is a BLOCK, and this page is what a reader gets. It used to fall through to
   // the paragraph path, so the literal ``` fence and any language token shipped as body text inside
   // a <div> — not monospaced, and with the line breaks collapsed by HTML. Same reader as the app
@@ -39883,9 +39943,10 @@ function nodeToReadonlyHtml(node, varMap) {
   } else inner = mdToHtml(flat, false);
   const chk = checkExprOf(node);
   if (chk) inner += checkVerdictHtml(evalCheck(node, varMap));
-  if (node.note) inner += '<div class="ro-note">' + mdToHtml(node.note) + '</div>';
+  // #1698: the note takes the body's link step too; mdToHtml alone drew a link as its live title.
+  if (node.note) inner += '<div class="ro-note">' + mdToHtml(linkText(node.note, 0, roLink, undefined, hide)) + '</div>';
   let kids = '';
-  for (const c of node.children || []) kids += nodeToReadonlyHtml(c, varMap);
+  for (const c of node.children || []) kids += nodeToReadonlyHtml(c, varMap, hide);
   if (kids) kids = '<div class="ro-kids">' + kids + '</div>';
   return '<div class="ro-pt">' + inner + kids + '</div>';
 }
@@ -39915,7 +39976,8 @@ const RO_EXPORT_CSS =
 function docToReadonlyHtml(rootNode) {
   const varMap = collectVars(rootNode);
   const title = escHtml(readonlyDocTitle(rootNode));
-  const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap)).join('');
+  const hide = noexportIds(root);   // #1698: a link to an excluded point never prints its title (live root, as in toMarkdown)
+  const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap, hide)).join('');
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<title>' + title + '</title><style>' + RO_EXPORT_CSS + '</style></head>' +
@@ -39930,21 +39992,23 @@ function toPlainText(rootNode) {
   const fnStore = (rootNode && rootNode.footnotes) || [];   // Phase A: doc-level footnote store
   const fnOrder = footnoteOrder(rootNode);                  // id -> document-order number
   const fnEmitted = new Set();                              // a reused footnote defines once, at first reference
+  const hide = noexportIds(root);                           // #1698: the live root, as in toMarkdown
+  const lt = (str) => linkText(str, 0, undefined, undefined, hide);
   function emit(node, depth) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
+      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
-      const dlabel = stripInlineMd(linkText(textForDisplay(node)));
+      const dlabel = stripInlineMd(lt(textForDisplay(node)));
       if (dlabel) out.push(`${indent}${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
       // UXP-237: both toPlainText branches strip unwritten markers, or the plain-text export is
       // only half fixed (a base point takes the branch above).
-      let body = renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + numbers
+      let body = renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + numbers
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
@@ -39953,15 +40017,15 @@ function toPlainText(rootNode) {
     // the point's note: continuation lines indented under the item
     // #1111: these four sinks bypassed the link chain, so a link written in a note, a property, a
     // divider label or a footnote shipped as a literal [[#id]] to the reader.
-    if (node.note) linkText(node.note).split('\n').forEach(l => out.push(`${indent}\t${l}`));
+    if (node.note) lt(node.note).split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // per-node properties as a single continuation line
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())); // #813
-    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${linkText(p.val)}`).join(' · ')}]`);
+    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${lt(p.val)}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node; Phase A: doc store, defined once
     getFnRefs(node.text).forEach(id => {
       if (fnEmitted.has(id)) return;
       const fn = fnStore.find(f => f.id === id);
-      if (fn && fn.text.trim()) { fnEmitted.add(id); out.push(`${indent}\t[^${fnOrder.get(id)}] ${stripInlineMd(linkText(fn.text)).replace(/\n+/g, ' ').trim()}`); }
+      if (fn && fn.text.trim()) { fnEmitted.add(id); out.push(`${indent}\t[^${fnOrder.get(id)}] ${stripInlineMd(lt(fn.text)).replace(/\n+/g, ' ').trim()}`); }
     });
     for (const c of node.children) emit(c, depth + 1);
   }
@@ -40097,7 +40161,10 @@ function exportSelfContainedHtml() {
   const links = impact.newBroken
     ? ` ${impact.newBroken} link${impact.newBroken === 1 ? '' : 's'} now point${impact.newBroken === 1 ? 's' : ''} at something the copy does not contain.`
     : '';
-  flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + links);
+  const fns = impact.lostFootnotes
+    ? ` ${impact.lostFootnotes} footnote${impact.lostFootnotes === 1 ? '' : 's'} cited only there ${impact.lostFootnotes === 1 ? 'is' : 'are'} left out too.`
+    : '';
+  flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + fns + links);
 }
 
 
