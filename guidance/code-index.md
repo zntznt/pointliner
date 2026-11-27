@@ -1769,7 +1769,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isConvertExpr` — #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
 - `formatConvertResult` — 4 significant figures, not N decimal places. Two decimals reads fine at 289.68 and destroys
 - `formatMathDisplay`
+- `noiseSnap` — #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+- `snappedSum`
 - `formatMathResult`
+- `formatCellValue` — #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
 - `groupThousands` — #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
 - `formatNumDisplay`
 - `parseNumFmt` — Pure: build a lean fmt record from the math dialog's three text fields (or null when all blank),

@@ -4964,8 +4964,8 @@ function reduceAgg(fn, vals) {
   if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
   if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
   if (!vals.length) return 0;
-  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (fn === 'sum') return snappedSum(vals);   // #1694
+  if (fn === 'avg') return snappedSum(vals) / vals.length;
   return 0;
 }
 function aggregateChildren(node, fn, prop, depth = 1) {
@@ -10072,7 +10072,7 @@ function computeTable(model, tblfm, vars = {}) {
   }
 
   function aggregate(fn, vals) {
-    const sum = vals.reduce((a, b) => a + b, 0);
+    const sum = snappedSum(vals);   // #1694
     if (fn === 'vsum') return sum;
     if (fn === 'vcount') return vals.length;
     if (fn === 'vmean') return vals.length ? sum / vals.length : 0;
@@ -10119,7 +10119,7 @@ function computeTable(model, tblfm, vars = {}) {
       } else if (v === ERR_UP) {
         disp = '#ERR (another cell)';
       } else {
-        disp = formatMathResult(v);
+        disp = formatCellValue(v);   // #1694: persisted, so never the 8 s.f. display cut
       }
     } catch (e) {
       if (e && e.message === 'CYCLE') disp = '#ERR (loops on itself)';
@@ -10274,14 +10274,16 @@ function renderStaticTable(block, l0, l1) {
   if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base"><i class="fa-solid fa-table-cells"></i> base</button>';
   // WAVE-2 HARD-9: a computed #ERR cell renders as plain text, not a live #ERR hashtag (see mtInline).
   const cellMd = (raw) => /^#ERR\b/.test(String(raw || '').trim()) ? escHtml(raw) : mdInline(raw || '');
+  // #1694: a computed cell holds full precision; painting rounds it like every other number
+  const paint = (key, raw) => computed.has(key) && /^-?[\d.]+(e[-+]?\d+)?$/i.test(String(raw || '').trim()) ? escHtml(formatMathResult(+raw)) : cellMd(raw);
   h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
   for (let c = 0; c < nc; c++)
-    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${cellMd(rows[0] && rows[0][c])}</th>`;
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${paint('0,' + c, rows[0] && rows[0][c])}</th>`;
   h += '</tr>';
   for (let r = 1; r < rows.length; r++) {
     h += '<tr>';
     for (let c = 0; c < nc; c++)
-      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${cellMd(rows[r] && rows[r][c])}</td>`;
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${paint(r + ',' + c, rows[r] && rows[r][c])}</td>`;
     h += '</tr>';
   }
   return h + '</table></div></div>';
@@ -31299,7 +31301,7 @@ function daysInMonthOf(y, m, cal) {   // days in month m of intrinsic year y
 }
 const FN1 = Object.assign(Object.create(null), {
   sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
-  round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  round: Math.round, sin: x => noiseSnap(Math.sin(x), x), cos: x => noiseSnap(Math.cos(x), x), tan: x => noiseSnap(Math.tan(x), x),   // #1694: sin(pi) is 0
   asin: Math.asin, acos: Math.acos, atan: Math.atan,
   ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
   exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
@@ -31716,7 +31718,7 @@ function evalMath(input, vars = {}) {
       // bare-identifier child rollup avg(prop) (substituted before evalMath by expandAggExpr) is
       // untouched — avg(2, 4) is the numeric mean, avg(cost) stays the aggregation.
       if (name === 'min' || name === 'max' || name === 'avg')
-        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : args.reduce((s, a) => s + a, 0) / args.length;
+        return name === 'min' ? Math.min(...args) : name === 'max' ? Math.max(...args) : snappedSum(args) / args.length;
       // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
       // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
       // A NaN operand propagates (→ the final isNaN gate → null) so a failed
@@ -31762,7 +31764,8 @@ function evalMath(input, vars = {}) {
       const op = peek();
       if (op !== '+' && op !== '-') break;
       eat();
-      v = op === '+' ? v + mulDiv() : v - mulDiv();
+      const w = mulDiv();
+      v = noiseSnap(op === '+' ? v + w : v - w, Math.max(Math.abs(v), Math.abs(w)));   // #1694
     }
     return v;
   }
@@ -31882,19 +31885,34 @@ function formatMathDisplay(v, expr, fmt) {
     : formatNumDisplay(v, fmt);
 }
 
+// #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+// absolute size at display (that printed Planck's 6.626e-34 as 0). A result under 1e-12 of its
+// operands' scale is cancellation dust (0.1+0.2-0.3, sin(pi)); 1e-12 is the 12 s.f. the comparison
+// snap in evalMath uses, so a pill and a comparison agree on what is zero.
+function noiseSnap(r, scale) {
+  return isFinite(scale) && Math.abs(r) <= 1e-12 * Math.abs(scale) ? 0 : r;
+}
+function snappedSum(vals) {
+  return noiseSnap(vals.reduce((a, b) => a + b, 0), vals.reduce((a, b) => a + Math.abs(b), 0));
+}
+
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
   // An exact integer prints in full — never round-trip it through toPrecision(10),
   // which truncates the low digits of an integer with >10 significant figures
-  // (123456789012 → 123456789000). This value is persisted into node.text by table
-  // recompute, so the corruption would be saved, not just displayed.
+  // (123456789012 → 123456789000).
   if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
   // Round to 10 significant figures to wash out floating-point noise
   const r = parseFloat(n.toPrecision(10));
-  // Snap near-zero results (e.g. sin(π) ≈ 1.2e-16 → 0)
-  if (Math.abs(r) < 1e-10 && Math.abs(n) <= 1) return '0';
   if (Number.isInteger(r) && Math.abs(r) < 1e15) return String(r);
   return parseFloat(n.toPrecision(8)).toString();
+}
+// #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
+// default (#1333) and cut a saved 1234567.89 to 1234567.9; 15 s.f. is every digit a double holds
+// reliably, so any decimal a user can type survives while 0.1+0.2 still saves as 0.3.
+function formatCellValue(n) {
+  if (!isFinite(n)) return formatMathResult(n);
+  return Number.isInteger(n) && Math.abs(n) < 1e15 ? String(n) : String(parseFloat(n.toPrecision(15)));
 }
 
 // #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
