@@ -11,8 +11,6 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2251 declarations in 159 sections across 17 domains.**
-
 # Document model & caches
 
 ## doc-cache registry
@@ -291,7 +289,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `nodePropVars` — The point's OWN numeric properties as a { name: number } overlay, so a bare name
 - `resolveNodeScope` — The merged { name: number } variable scope visible AT a node — the ONE place the two
 - `_evalCheckActive` — Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
+- `_evalCheckStack` — Per-pass verdict memo: a chain of N checks each counting the failing checks below it re-evaluated the
+- `_evalCheckCycles`
 - `evalCheck` — Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
+- `evalCheckOnce`
 
 ## custom calendars (#527, Tier 1)
 
@@ -408,6 +409,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `collectVars`
 - `_varDeclIdxVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
 - `varMapAt`
+- `varDeclResolved` — The resolveVarDefs result after the first k declaring points, cached per k. Each builds on the
 - `varDeclIndex` — One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
 - `varDeclState` — The accumulator after pack vars and the first k declaring points: what both positional readers
 - `collectNodeDecls` — Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
@@ -1063,7 +1065,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `doCapture`
 - `appendTextToInbox` — Append one markdown-aware point (like doCapture) to the resolved inbox, or to the top
 - `buildSharePointText` — Combine a shared body / title / url into one point's plain text (#465). The body leads; a
-- `handleUrlAppend` — #465: URL-based capture. `?append=<text>` (and the PWA share_target, which routes shared
+- `URL_APPEND_MAX` — #465: URL-based capture. `?append=<text>` (and the PWA share_target, which routes shared
+- `handleUrlAppend`
 
 ## journal strip: capture's twin for today's entry (DL §4: docked strips share one
 
@@ -1130,6 +1133,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `resolveSearchExpr` — Resolve any embedded {…} in a search expr so a query ARGUMENT can be dynamic — {count: {status}},
 - `queryRows`
 - `queryReduce` — {roll: <search-query>} — pick ONE random point matching the query, returned as its title
+- `_qrMemo` — The live-document door to queryReduce for expandAggExpr's pills. A doc-wide reducer walks every
+- `queryReduceMemo`
 - `queryCountIn` — count("query") — the original cardinality form, now a thin delegate to the general reducer.
 - `_qrfMemo` — 4c (cross-document-direction.md): the FOLDER-scoped reducer behind {= sum("query", prop,
 - `queryReduceFolder`
@@ -2720,6 +2725,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `hideStorageWarn`
 - `showWorkspaceWarn` — Lost-workspace-access banner (brief #4). Reuses the dismissible #storage-warn alert
 - `scheduleAutosave`
+- `_persistAsked`
 - `writeAutosavePayloadNow` — The debounce body, extracted so the pagehide flush below can run it synchronously.
 - `flushPendingAutosave` — #802 (agent-review, UXP-195): text typed in the debounce window must survive a tab
 - `_backupNudged` — UXP-119: on the weakest durability tier (no working File System Access, so no folder auto-write and
@@ -2745,6 +2751,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `maybeNudgeTypedLink` — A hand-typed `[[Name]]` that resolveTypedLinks could NOT turn into a link (no point by that
 - `_autosaveDeferred`
 - `storageAdvice` — The localStorage crash-buffer write. With OPFS as the durable store, hitting the
+- `isForeignAutosave` — Two same-origin tabs in browser mode share ONE autosave slot, so the last writer wins and the
+- `_lastSlotWrite`
 - `writeLocalAutosave`
 - `lastAutosaveSavedAt` — Returns the savedAt epoch-ms from the localStorage autosave, or 0 if absent/unreadable.
 - `lastAutosaveFileModified` — #746: the workspace file's lastModified as we recorded it (_wsKnownModified) at the moment

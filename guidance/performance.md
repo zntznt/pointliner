@@ -291,10 +291,73 @@ two declarations shares one map and a document with no declarations resolves onc
 replays the same index instead of its own walk. Proven identical to the old per-node walks by a
 seeded differential test (`varMapAt + renderPosVarMaps: the shared declaration index...`).
 
-**What is left** is the ~52 ms flat at 200 chained declarations: the backlinks scan still asks for a
-map at each of the 200 declaration counts, and each resolves its whole chain. It no longer grows with
-document size. Incremental resolution between counts would remove it, but `resolveVarDefs` resolves
-eagerly per map, so that is a change to the resolver, not to this cache.
+**What was left** was the ~52 ms flat at 200 chained declarations: the backlinks scan still asks for a
+map at each of the 200 declaration counts, and each resolved its whole chain. It no longer grows with
+document size. Removed by incremental resolution (next section).
+
+### Positional maps resolve incrementally; nested checks evaluate once (2026-11-27)
+
+**Variables.** Profiled in Node (`tests/load-cores.mjs`), the cost was evaluation, not copying: every
+declaration count re-evaluated every declaration above it, and `renderPosVarMaps` did it again per
+token. 200 chained declarations (`{vK := vK-1 + 1}`) over 5k points cost **42,871** `evalMath` calls
+per generation; now **229** (one per declaration, plus one per pill that follows a declaration in the
+same point). `resolveVarDefs(defs, pickVals, order, propScopes, prev, changed)` takes the result for
+the nearest smaller declaration count, marks dirty the changed names and every name whose expression
+looked one up (a reverse-dependency map shared down the chain; it only over-marks), evaluates those,
+and replays the rest from `prev` in their original lookup order, so values, key order and cycle flags
+are what a from-scratch resolve gives. `varDeclResolved` caches one result per count;
+`renderPosVarMaps` starts from it and shares one map between tokens with no declaration between
+them. The seeded differential test (`the shared declaration index...`) now compares key order too.
+
+Headless Chromium 1255 (`file://`, a page that appends a timing script to `index.html`), 4-core
+host at load 4 to 6: one full positional pass, `varMapAt` + `renderPosVarMaps` on every point after a
+generation bump, min (median) of 31.
+
+| points | vars | before | after |
+|---|---|---|---|
+| 5 000 | 0 | 1.1 (2.0) | 1.1 (2.0) |
+| 5 000 | 20 | 1.8 (1.9) | 1.2 (1.4) |
+| 1 000 | 200 | 79.6 (84) | 10.1 (10 to 12) |
+| 5 000 | 200 | 85.9 (85 to 94) | 11.1 (11 to 17) |
+
+The floor that stays is O(n^2) cheap work, not evaluation: each of the 200 maps is a separate full
+object (consumers read them with `Object.keys` / `Object.assign`, so a prototype-chained map would
+change their results), and each replays ~n lookups. Node's `vm` context inflates every number here
+about 3x (global lookups go through an interceptor): 265 ms before, ~40 ms after in the same run.
+
+**Checks.** A chain of checks that each count the failing checks below them (`count("is:failing")
+== 0` nested N deep) re-evaluated every check under each level: 2^(N-1) evaluations, measured in Node
+at N = 16: 0.5 s, N = 18: 2.0 s, N = 20: 9.5 s (524,288 evaluations) for ONE verdict. `evalCheck`
+now memoizes verdicts for one outermost call (`_evalCheckMemo`, keyed on node + `vars` + ancestors,
+cleared when the call stack empties, so no edit can read a stale verdict): N evaluations, N = 20 in
+2 ms, N = 100 in 26 ms. A verdict whose evaluation hit the re-entry guard on a point other than the
+one asking (a cycle between checks, e.g. two `count("is:failing", document)` hosts) is not stored,
+because it depends on which checks happen to be active; those are recomputed exactly as before. The
+remaining cost is per call: a render evaluates each chip separately, so a chain of N chips is O(N^2)
+evaluations per render, not O(2^N).
+
+### Query-reducer pills: one walk per generation (2026-11-27)
+
+Pure cores in Node v24 through `tests/load-cores.mjs`, on a 4-core Intel Xeon E-2224 Debian host
+(median of 7 passes, after one warm pass). Document: 5,000 points (50 sections of 99 items, each
+item tagged `#task` or `#risk`, some `#big`, with numeric `cost` and `sev`). A "pass" is
+`expandAggExpr` for 50 pills, the call `renderMathPill` makes for every math pill it paints.
+"Mixed" = 20 distinct `sum`/`avg`/`min`/`max`/`count` over 4 queries, `, document` scope.
+
+| 50 pills per pass | before | after, same generation | after, first pass after an edit |
+|---|---|---|---|
+| same doc-wide reducer x50 | **1 076 ms** | 0.11 ms | 23 ms |
+| 20 distinct doc-wide reducers | **1 008 ms** | 0.11 ms | 414 ms |
+| subtree reducer, one per 100-point section | 21 ms | 0.11 ms | 21 ms |
+
+A doc-wide `sum("q", prop, document)` walks every point and matches each one (~20 ms at 5k), and
+nothing remembered it, so each pill paid that on every render. `queryReduceMemo` keeps the result
+per (scope point, reducer, query, prop) and clears on `_varsVer`, the signal `queryRowsMemo` and
+`qbaseModel` already use, so any edit recomputes and a plain re-render does no tree work.
+
+**What is left** is the cold cost: the first pass after an edit still pays one walk per DISTINCT
+reducer (414 ms for 20 of them at 5k). Sharing one walk across reducers that use the same query, or
+an incremental index, would cut that; neither is done.
 
 ### Scroll, doc-caches, and pill-heavy documents
 
