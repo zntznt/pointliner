@@ -149,6 +149,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `backlog.md` | Consolidated feature gaps with status marks |
 | `features.md` | The exhaustive engine-level feature reference (contributor-facing; the user inventory is `guide/features.md`) |
 | `performance.md` | Measured performance baseline (incl. the bases sweep) + embedded re-run harnesses |
+| `engineering-evaluation-2026-11.md` | Independent engineering evaluation: scorecard, confirmed defects #1693 to #1702, the three changes that cut future cost |
 | `accessibility.md` | A11y sequencing, complete; retained for the durable guardrails |
 | `ux.md` | Discoverability strategy / verbosity dial (vision; the standard governs where they differ) |
 | `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive snapshot (candidate material, not commitments) |
@@ -165,6 +166,7 @@ bind nothing.
 | `user-research-2026-07-fleet2.md` | Five personas, second fleet — audiences the first six did not represent |
 | `user-research-2026-07-fleet3.md` | Six personas, third fleet, laptop — walks of life the first eleven did not cover |
 | `user-research-2026-11-panel8.md` | Driven panel #8: six trades and hobbies, every wall re-driven on main, issues #1656 to #1661 |
+| `user-research-2026-11-panel9.md` | Driven panel #9: independent cold read plus six personas on the table view and h:mm, issues #1704 to #1709 |
 
 (Deliberately shelved direction lives in the sibling `parked/`, currently the version-control
 pivot. Not stray; don't resurrect without sign-off.)

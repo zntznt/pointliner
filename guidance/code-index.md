@@ -190,6 +190,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## subtree aggregation: sum / avg / count over a child PROPERTY
 
 - `propExprValue` — A math pill may aggregate a named property over the point's DIRECT children —
+- `propFormulaValue` — #1699: the value a property SHOWS as computed: propExprValue, except under a reserved key whose
 - `parseDuration` — #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
 - `formatDuration` — The display half: decimal hours as h:mm, with :ss only when the value has seconds once rounded to
 - `rollupFmt` — #1666: the format a rollup pill SHOWS. A bare sum/avg/min/max over a column whose every value is
@@ -1771,7 +1772,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isConvertExpr` — #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
 - `formatConvertResult` — 4 significant figures, not N decimal places. Two decimals reads fine at 289.68 and destroys
 - `formatMathDisplay`
+- `noiseSnap` — #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+- `snappedSum`
 - `formatMathResult`
+- `formatCellValue` — #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
 - `groupThousands` — #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
 - `formatNumDisplay`
 - `parseNumFmt` — Pure: build a lean fmt record from the math dialog's three text fields (or null when all blank),

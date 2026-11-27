@@ -3973,8 +3973,8 @@
       "suite": "unit",
       "why": "#1656: the chip evaluates a row formula with no row, so `cost: gal * ppg` shows the raw text while the total counts 400; a source-presence pin, so it needs a standing mutant",
       "file": "index.html",
-      "find": "      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row",
-      "replace": "      const ev = propExprValue(val);",
+      "find": "      const ev = propFormulaValue(propK, val, rowPropVars(node));   // #1656: a row formula reads its own row",
+      "replace": "      const ev = propFormulaValue(propK, val);",
       "kills": "#1656 every row-formula reader"
     },
     {
@@ -4114,6 +4114,7 @@
     {"id": "noexport-footnote-prune", "suite": "unit", "why": "a footnote cited only by an excluded point must not ride the head store into the shareable copy", "file": "index.html", "find": "    p.footnotes = r.footnotes.filter(f => !before.has(f.id) || after.has(f.id));", "replace": "    p.footnotes = r.footnotes;", "kills": "#1698 pruneNoexport drops a footnote"},
     {"id": "noexport-link-hide", "suite": "unit", "why": "a caption-less link to an excluded point must not print its title in a prose export", "file": "index.html", "find": "      if (hide && hide.has(id)) return out(LINK_HIDDEN_TEXT, docId || '', id);\n", "replace": "", "kills": "#1698 a caption-less link to an excluded point"},
     {"id": "noexport-link-hide-recursion", "suite": "unit", "why": "a kept title that itself links to an excluded point must carry the hide set one level down", "file": "index.html", "find": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner, hide) || id, docId || '', id);", "replace": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);", "kills": "#1698 a caption-less link to an excluded point"},
-    {"id": "noexport-readonly-note-link", "suite": "unit", "why": "the read-only page's note sink must take the link step, or mdToHtml draws the excluded title", "file": "index.html", "find": "mdToHtml(linkText(node.note, 0, roLink, undefined, hide))", "replace": "mdToHtml(node.note)", "kills": "#1698 a caption-less link to an excluded point"}
+    {"id": "noexport-readonly-note-link", "suite": "unit", "why": "the read-only page's note sink must take the link step, or mdToHtml draws the excluded title", "file": "index.html", "find": "mdToHtml(linkText(node.note, 0, roLink, undefined, hide))", "replace": "mdToHtml(node.note)", "kills": "#1698 a caption-less link to an excluded point"},
+    {"id": "static-table-paint-rounds", "suite": "unit", "why": "a static table paints a computed cell's full persisted precision instead of the display default", "file": "index.html", "find": "? escHtml(formatMathResult(+raw)) : cellMd(raw);", "replace": "? cellMd(raw) : cellMd(raw);", "kills": "#1694 a table formula persists full precision"}
   ]
 }
