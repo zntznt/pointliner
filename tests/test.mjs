@@ -40977,6 +40977,61 @@ test('table view: editQBase preserves every qbase config field (census)', () => 
   for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
 });
 
+// ── Table view slice 3: pick columns by ticking (guidance/table-view-proposal.md) ───────────────
+// The query editor's columns were a textarea mini-language only, so a list's table showed every
+// property and dropping one meant finding and deleting its line by hand. The picker is a front door
+// onto that SAME text: ticking writes a line, unticking removes it, nothing else moves.
+test('table view slice 3: qbaseColsHave reads a column off the text the way the grid projects it', () => {
+  const text = 'Name: title\nbeds\nYield (kg): Yield\nCost: = sum(cost)';
+  assert.equal(c.qbaseColsHave(text, 'beds'), true);
+  assert.equal(c.qbaseColsHave(text, 'yield'), true, 'a renamed column still projects its key, case-insensitively');
+  assert.equal(c.qbaseColsHave(text, 'cost'), false, 'a formula that mentions cost is not the cost column');
+  assert.equal(c.qbaseColsHave(text, 'Name'), false, 'a label is not a field');
+  assert.equal(c.qbaseColsHave('', 'beds'), false);
+  assert.equal(c.qbaseColsHave(text, ''), false);
+});
+
+test('table view slice 3: qbaseColsToggle adds and removes one line and leaves the rest byte-identical', () => {
+  const text = 'Name: title\nbeds\nCost: = sum(cost)';
+  assert.equal(c.qbaseColsToggle(text, 'yield', true), text + '\nyield', 'tick appends a bare key line');
+  assert.equal(c.qbaseColsToggle(text + '\n\n', 'yield', true), text + '\nyield', 'no blank line left before it');
+  assert.equal(c.qbaseColsToggle(text, 'beds', false), 'Name: title\nCost: = sum(cost)', 'untick drops its line only');
+  assert.equal(c.qbaseColsToggle('Beds (n): BEDS\nbeds', 'beds', false), '', 'every line projecting the key goes');
+  assert.equal(c.qbaseColsToggle(text, 'beds', true), text, 'ticking a shown column is a no-op');
+  assert.equal(c.qbaseColsToggle(text, 'yield', false), text, 'unticking a hidden one is a no-op');
+  assert.equal(c.qbaseColsToggle('', 'beds', true), 'beds');
+  // Round trip: the result still parses to the same column spec the grid reads.
+  assert.deepEqual(host(c.parseQBaseCols(c.qbaseColsToggle(text, 'yield', true))).map(cd => cd.field), ['title', 'beds', '= sum(cost)', 'yield']);
+});
+
+test('table view slice 3: listColumnKeys offers the shape in order, then sparse keys, never bookkeeping', () => {
+  const states = new Set(['TODO', 'DONE']);
+  const kids = [
+    { id: 'tv', text: '', type: 'base', qbase: { expr: '', cols: [], scope: 'siblings' }, props: [{ key: 'ghost', val: '1' }], children: [] },
+    ...TV_FARM().children[0].children,
+  ];
+  kids[2].props.push({ key: 'note', val: 'slugs' }, { key: 'Beds', val: 'dup' });
+  assert.deepEqual(host(c.listColumnKeys(kids, states)), ['beds', 'yield', 'note'],
+    'shape columns first, a one-off key after, created/edited and the base itself never, one entry per key');
+  assert.deepEqual(host(c.listColumnKeys([], states)), []);
+  assert.deepEqual(host(c.listColumnKeys(undefined, states)), []);
+});
+
+test('table view slice 3: the query editor offers the picker on a list-scoped base only, fronting the columns field', () => {
+  const ed = fnBody(_src, 'editQBase');
+  assert.ok(/pickKeys:\s*node\.qbase\.scope === 'siblings' \? listColumnKeys\(parentOf\(node\.id\)/.test(ed),
+    'editQBase hands the list\'s keys to the dialog, and only for a list-scoped base');
+  const dlg = fnBody(_src, 'openQBaseDialog');
+  assert.ok(dlg.includes("type: 'checks'") && dlg.includes('qbaseColsHave(all.cols, k)') && dlg.includes('qbaseColsToggle(inputs.cols.value, k, on)'),
+    'the checks field reads and rewrites the cols text, not a second store');
+  const ins = fnBody(_src, 'openInsertDialog');
+  const checks = between(ins, "if (f.type === 'checks')", 'const lab = document.createElement');
+  assert.ok(checks.includes("createElement('fieldset')") && checks.includes("createElement('legend')"), 'the boxes are one named group');
+  assert.ok(checks.includes("addEventListener('input'") && checks.includes('f.onToggle('), 'a toggle rewrites the fronted field');
+  assert.ok(checks.includes('_previewFns.push(sync)'), 'typing in the field re-ticks the boxes');
+  assert.ok(!/inputs\[[^\]]*\]\s*=/.test(checks), 'the group holds no value of its own (drafts and onSubmit never see it)');
+});
+
 // table-view-proposal.md slice 2: a query base's header is a second door onto qbase.sort. On main
 // the header was inert text and sorting meant typing "beds desc" into the editor.
 test('table view slice 2: a header press cycles ascending, descending, document order', () => {

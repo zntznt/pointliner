@@ -680,6 +680,10 @@ Implemented:
   and the bullet menu's "Show list as table view" (`tableViewListFor`, heading or row);
   both call `createListTableView`, which inserts the base as the list's first point. The
   strip words the source via `qbaseSourceText`; `editQBase` keeps the scope as a checkbox.
+  **Slice 3** adds a column picker to that editor on a list-scoped base: one checkbox per
+  `listColumnKeys` key (shape order, then sparse `dataPropKeys`), an `openInsertDialog`
+  `checks` field that fronts the columns textarea through `qbaseColsHave`/`qbaseColsToggle`
+  (the text stays the one store; typing re-ticks the boxes).
   **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);
