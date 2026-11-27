@@ -134,11 +134,6 @@ def collect():
 
 
 def render(groups, with_lines=False):
-    total = sum(len(v) for _, _, v in groups)
-    domains = []
-    for d, _, _ in groups:
-        if not domains or domains[-1] != d:
-            domains.append(d)
     out = [
         '# Code index',
         '',
@@ -153,9 +148,8 @@ def render(groups, with_lines=False):
         '(`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while',
         'editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.',
         '',
-        f'**{total} declarations in {len(groups)} sections across {len(domains)} domains.**',
-        '',
     ]
+    # No totals line: it changed on every edit, so any two PRs that add a declaration conflicted on it.
     seen = None
     for dom, section, items in groups:
         if dom != seen:

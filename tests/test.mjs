@@ -31330,6 +31330,11 @@ test('#1427 CI runs the browser smoke, and installs what it needs', () => {
     'unpinned install lets an upstream release turn the gate red with no change here');
   assert.ok(/playwright install .*chromium/.test(_wfTests),
     'and the browser binary too: the module alone launches nothing');
+  // The browser cache is keyed on the version by hand; a key left behind on a bump restores stale
+  // binaries and never re-saves, so every run downloads again with nothing to say so.
+  const pw = /playwright@(\d+\.\d+\.\d+)/.exec(_wfTests)[1];
+  assert.match(_wfTests, new RegExp(`key: ms-playwright-\\$\\{\\{ runner\\.os \\}\\}-${pw.replace(/\./g, '\\.')}\\n`),
+    'the ms-playwright cache key names the playwright version that is installed');
   // The offline job must stay offline. tests/test.mjs is the gate that works with no network, and
   // folding the browser checks into it would put a download on the common path.
   assert.ok(/^  node-tests:$/m.test(_wfTests), 'the offline job still exists');

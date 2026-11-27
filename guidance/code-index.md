@@ -11,8 +11,6 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2237 declarations in 158 sections across 17 domains.**
-
 # Document model & caches
 
 ## doc-cache registry
