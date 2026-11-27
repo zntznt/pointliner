@@ -78,6 +78,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rederiveFromText` — Re-derive BOTH derived hints (type AND checked) from node.text, the single source of truth.
 - `textForDisplay` — Text shown in rendered (non-edit) view — block prefix stripped. Also strips a
 - `LINK_RESOLVE_DEPTH` — Render `[[…]]` link tokens in a title to legible PLAIN TEXT for the no-pill,
+- `LINK_HIDDEN_TEXT`
 - `linkText` — #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
 - `mdLinkOut` — #1111: the markdown form a resolved link takes in an exported .md.
 - `CAPTION_TAG_RE` — #943: strip hashtag tokens from a title/snippet shown as a link CAPTION or backlink row.
@@ -587,6 +588,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `headJSONArray`
 - `toOpml`
 - `pruneNoexport` — A root-shaped COPY with every `noexport` subtree removed, for the one serializer whose output
+- `noexportIds` — #1698: the ids of every point inside an excluded subtree. The prose exports resolve a link with an
 - `exportExclusionImpact` — What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
 - `EX_SNIFF` — Encode newlines/tabs/CRs as numeric character references — XML attribute-value
 - `ex`

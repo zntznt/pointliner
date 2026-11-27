@@ -342,7 +342,7 @@ export function loadCores() {
     'textBlockPrefix','unfoldTokensIn','artifactTokenRe','normStateKey','boardBlockReason','statusColWarning','baseStructMessage','colWidthLabel','mtColValueCount','mtRowValueCount','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal (#1401: and its now-shared unknown-values half), the slash pool
     'baseRefocusSelector',   // #1383: where focus goes back to after a base rebuild
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
-    'pruneNoexport','exportExclusionImpact',
+    'pruneNoexport','exportExclusionImpact','noexportIds',
     'searchScopeSay','searchEmptySay',          // #1509: what a search says when the view is zoomed
     'filterResultSay',                          // #1510: what a filter says when it changes the list
     'chipTemplateSpan','chipTemplateSay','chipAriaLabel','chipTemplateLabels',   // #1513: a legend chip whose label carries a placeholder is a template, not a query
