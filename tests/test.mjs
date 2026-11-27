@@ -7518,9 +7518,36 @@ test('table: a cell formula can reference a document variable', () => {
   assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR (bad ref)');
 });
 
+test('#1694 a table formula persists full precision, and only real noise snaps to zero', () => {
+  const t = c.parseTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | 234567.64 | |');
+  assert.equal(c.computeTable(t, '$3=$1+$2')[1][2], '1234567.89', 'cents survive a total over 1,000,000');
+  const painted = c.renderStaticTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | 234567.64 | |\n#+TBLFM: $3=$1+$2');
+  assert.ok(painted.includes('>1234567.9</td>') && !painted.includes('1234567.89'), 'painting still rounds to the display default');
+  const chain = c.parseTable('| a | b | c |\n|---|---|---|\n| 1000000.25 | | |');
+  assert.equal(c.computeTable(chain, '$2=$1*3 :: $3=$2-$1')[1][2], '2000000.5', 'a chained formula reads the uncut value');
+  assert.equal(c.formatCellValue(0.1 + 0.2), '0.3', 'float dust is still washed out of the saved text');
+  assert.equal(c.formatCellValue(123456789012), '123456789012');
+  assert.equal(c.formatCellValue(1 / 0), c.formatMathResult(1 / 0));
+  // a real small value is a value
+  assert.equal(c.formatMathResult(3e-11), '3e-11');
+  assert.equal(c.formatMathResult(c.evalMath('6.626e-34')), '6.626e-34');
+  assert.equal(c.evalMath('3e-11 == 0'), 0, 'and the comparison agrees with what is shown');
+  // noise is judged against the operands that made it
+  for (const e of ['sin(pi)', 'cos(pi/2)', 'tan(pi)', 'sin(100*pi)', '0.1+0.2-0.3', 'avg(0.1, 0.2, -0.3)'])
+    assert.equal(c.evalMath(e), 0, e + ' snaps');
+  assert.equal(c.evalMath('sin(1e-13)'), Math.sin(1e-13), 'a small angle is not noise');
+  assert.equal(c.evalMath('1e-13 + 0'), 1e-13);
+  assert.equal(c.evalMath('1/0 - 5'), Infinity, 'an infinite operand never snaps a result');
+  assert.equal(c.reduceAgg('sum', [0.1, 0.2, -0.3]), 0, 'child rollups snap the same way');
+  assert.equal(c.computeTable(c.parseTable('| a | s |\n|---|---|\n| 0.1 | |\n| 0.2 | |\n| -0.3 | |'), '@4$2=vsum(@2$1..@4$1)')[3][1], '0');
+  assert.equal(c.noiseSnap(5e-13, 1), 0);
+  assert.equal(c.noiseSnap(5e-12, 1), 5e-12);
+  assert.equal(c.snappedSum([]), 0);
+});
+
 test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
   const f = (e) => computeTable(tblModel(), '@4$1=' + e)[3][0];
-  assert.equal(f('vmean(@2$2..@4$2)'), parseFloat((17 / 3).toPrecision(8)).toString());
+  assert.equal(f('vmean(@2$2..@4$2)'), String(parseFloat((17 / 3).toPrecision(15))));   // #1694: persisted at full precision
   assert.equal(f('vmax(@2$2..@4$2)'), '10');
   assert.equal(f('vmin(@2$2..@4$2)'), '2');
   assert.equal(f('vcount(@2$2..@4$2)'), '3');
@@ -37571,10 +37598,9 @@ test('#983 formatConvertResult: 4 significant figures, and the two escapes go to
   assert.equal(c.formatConvertResult('x'), c.formatMathResult('x'));
 });
 
-test('#983 formatMathResult is UNCHANGED — it is the lossless path this change must not touch', () => {
-  // The whole safety argument: formatMathResult's output is persisted into node.text by table
-  // recompute, so a rounding change there would be saved, not merely displayed. This pins the
-  // values #983 is about, so any future attempt to "just round it at the source" fails here.
+test('#983 formatMathResult is UNCHANGED — the default the convert rounding must not touch', () => {
+  // formatMathResult is the shared display default. #1694 moved table persistence to formatCellValue,
+  // but this still pins the values #983 is about, so "just round it at the source" fails here.
   assert.equal(c.formatMathResult(289.68192), '289.68192');
   assert.equal(c.formatMathResult(6.2137119224), '6.2137119');
   assert.equal(c.formatMathResult(0.0254), '0.0254');
@@ -37582,7 +37608,7 @@ test('#983 formatMathResult is UNCHANGED — it is the lossless path this change
   assert.equal(c.formatMathResult(160934.4), '160934.4');
   assert.equal(c.formatMathResult(1), '1');
   assert.equal(c.formatMathResult(123456789012), '123456789012', 'the big-integer guard still holds');
-  assert.equal(c.formatMathResult(1.2246467991473532e-16), '0', 'and the near-zero snap');
+  assert.equal(c.formatMathResult(c.evalMath('sin(pi)')), '0', 'and the near-zero snap, now made in evalMath (#1694)');
   // Side by side, so the change is legible as exactly one thing: display rounds, persistence does not.
   for (const [n, lossless, shown] of [
     [289.68192,    '289.68192', '289.7'],

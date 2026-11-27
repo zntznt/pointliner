@@ -185,7 +185,7 @@ export function loadCores() {
     'estNumFmt','distHeadline',   // #1115: the estimate number, and the shared mean (p5 – p95) line
     'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
-    'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
+    'evalMath', 'formatMathResult', 'noiseSnap', 'snappedSum', 'formatCellValue', 'formatEpochDays', 'makeMathResult',
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'condAttempt', 'condAttemptReason', 'condEmptyMessage', 'strCondVerdict',
