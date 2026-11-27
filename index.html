@@ -4540,6 +4540,14 @@ function propExprValue(raw, vars = {}) {
   const v = evalMath(s, vars);
   return (v !== null && Number.isFinite(v)) ? v : null;
 }
+// #1699: the value a property SHOWS as computed: propExprValue, except under a reserved key whose
+// value is a date, alias list or repeat phrase (`when: 10/12/2024` is a date, not 10 / 12 / 2024).
+// One home for the exemption, so the chip and the CSV export cannot disagree. Pure.
+function propFormulaValue(key, raw, vars = {}) {
+  const k = String(key || '').trim().toLowerCase();
+  if (DATE_KEYS.has(k) || k === 'when' || k === 'date' || k === ALIAS_KEY || k === REPEAT_KEY) return null;
+  return propExprValue(raw, vars);
+}
 // #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
 // 8:45 is 8.75 and compares to an 11-hour limit directly. Minutes and seconds are two digits 00-59
 // (ISO 8601, HTML time strings); hours may pass 24, as a spreadsheet's [h]:mm does. A VALUE reader
@@ -15678,8 +15686,8 @@ function buildPropsArea(node) {
     }
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
-    if (!DATE_KEYS.has(propK) && propK !== 'when' && propK !== 'date' && propK !== ALIAS_KEY && propK !== REPEAT_KEY) {
-      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row
+    {
+      const ev = propFormulaValue(propK, val, rowPropVars(node));   // #1656: a row formula reads its own row
       if (ev !== null) { displayVal = formatNumDisplay(ev, null); chip.classList.add('prop-computed'); chip.title = `${val} = ${displayVal}. Click to edit`; chip.setAttribute('aria-label', `${key}: ${displayVal} (from ${val}). Click to edit properties`); }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -39534,7 +39542,10 @@ function tableToPoints(text, delim) {
 // point, values frozen. The exact inverse of importSplitRow, so an exported file round-trips back
 // through the paste importer. Pure string builders, Node-testable.
 function csvCell(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  // #1699: OWASP CSV injection guard. A cell a spreadsheet would read as a formula gets a leading ',
+  // so a shared document's `=HYPERLINK(...)` title stays text. A plain number (-5, +3) is left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;   // quote + double-up, like sheet CSV
 }
 function rowsToCsv(rows) {
@@ -39558,7 +39569,7 @@ function sectionToCsvRows(node, states) {
     const val = k => {
       const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase());
       if (!p) return '';
-      const ev = propExprValue(p.val, rowPropVars(c));   // #1317/#1656: freeze a formula property to its computed value in the CSV
+      const ev = propFormulaValue(k, p.val, rowPropVars(c));   // #1317/#1656/#1699: freeze a formula to its value, as the chip shows it
       return ev !== null ? String(ev) : p.val;
     };
     rows.push([auditTitle(c.text), ...keys.map(val)]);
