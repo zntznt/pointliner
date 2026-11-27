@@ -1451,6 +1451,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openDialogShell`
 - `openInsertDialog`
 - `closeIo`
+- `liveReturnTarget` — #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
+- `returnTwin` — The DOM half: a point by its data-id, a base control by the stable key refreshTable already uses.
 - `closeBuilderWindow` — Close the builder window after a nested dialog submits. Clears builder state,
 
 ## #844: guard rails for the shared #io-card
@@ -2525,6 +2527,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `fmtKey`
 - `openFileMenu`
 - `closeFileMenu`
+- `closeFileMenuToCaret` — #1705: a row that ACTS and opens nothing (the exports) hands the caret back the way Escape does,
 - `fmItems` — keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 - `fmNavBtns`
 - `saveStatusEl` — #1268: the save-status chip is the door to the safety story — click it to open the File menu (export,

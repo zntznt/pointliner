@@ -32344,6 +32344,47 @@ test('#1464 B3: a dialog never hands focus back to a surface that closed behind 
   assert.ok(captures >= 13, `the capture sites must all still be there, found ${captures}`);
 });
 
+// #1705: confirm paths dropped focus to <body> while dismiss kept it. A commit re-renders, so the
+// element captured on open is detached by close; the core follows it to its live twin, the DOM half
+// names that twin by a stable key, and closeIo runs it both now and one frame on (a commit that
+// renders AFTER closeIo detaches the target a second time).
+test('#1705 a dialog that commits hands focus to the re-rendered twin of its return target', () => {
+  const live = { isConnected: true, id: 'live' };
+  const gone = { isConnected: false, id: 'gone' };
+  const seen = [];
+  const find = el => { seen.push(el.id); return live; };
+  assert.equal(c.liveReturnTarget(live, find), live, 'a connected target is kept');
+  assert.deepEqual(seen, [], 'and never looked up');
+  assert.equal(c.liveReturnTarget(gone, find), live, 'a detached target is followed to its twin');
+  assert.deepEqual(seen, ['gone'], 'by asking about the detached element itself');
+  assert.equal(c.liveReturnTarget(gone, () => null), gone, 'no twin: left as it was (the old behaviour)');
+  assert.equal(c.liveReturnTarget(null, find), null);
+  assert.equal(c.baseRefocusSelector({ chrome: 'mt-qbase-head' }), '.mt-qbase-head',
+    'the query strip head is a stable target, so Save on Edit query base can find it again');
+
+  const ci = fnBody(_src, 'closeIo');
+  assert.equal((ci.match(/liveReturnTarget\(ret, returnTwin\)\.focus\(\)/g) || []).length, 2,
+    'closeIo focuses the live twin now AND again one frame on');
+  assert.match(ci, /requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === document\.body\)/,
+    'the second pass only fills an empty focus, never moves a real one');
+  const tw = fnBody(_src, 'returnTwin');
+  assert.match(tw, /\.node-content\[data-id=/, 'a point is found again by its id');
+  assert.match(tw, /baseRefocusSelector\(baseFocusDescriptor\(el\)\)/, 'a base control by the #1383 key');
+
+  // The File menu: every export row is the same family, so all of them return to the caret.
+  const exportRows = nonEmpty(_src.match(/getElementById\('btn-export-[a-z]+'\)\.addEventListener\('click', [^\n]*/g) || [],
+    'the export rows');
+  assert.ok(exportRows.length >= 4, 'all four export rows are counted: ' + exportRows.length);
+  for (const r of exportRows) assert.match(r, /closeFileMenuToCaret\(\); \}\);$/, 'returns to the caret: ' + r);
+  assert.match(fnBody(_src, 'closeFileMenuToCaret'), /const back = chromeReturn; closeFileMenu\(\); chromeReturn = back; restoreChromeReturn\(\);/,
+    'keeps the armed caret across closeFileMenu, which clears it, then restores it');
+  const nf = fnBody(_src, 'newFile');
+  assert.ok(nf.indexOf('ioReturnFocus = null;') >= 0 && nf.indexOf('ioReturnFocus = null;') < nf.indexOf('await adoptDocWithRestorePoint'),
+    'New drops the old document\'s File button as its return target');
+  assert.match(nf, /await adoptDocWithRestorePoint\(mkRoot\(\), \{ fileName: fname \}\);\s*if \(!IS_TOUCH && flatRows\.length\) focusNode\(flatRows\[0\]\.node\.id\);/,
+    'and starts the new document in its first point');
+});
+
 test('#1464 B5: Tab stays inside the point-actions menu', () => {
   const kd = between(_src, "bpop.addEventListener('keydown'", "// The node id to restore focus to");
   assert.match(kd, /else if \(e\.key === 'Tab'\) \{ e\.preventDefault\(\);/,

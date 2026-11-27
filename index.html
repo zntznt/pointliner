@@ -12616,7 +12616,7 @@ function mtPatchCells(node, exceptCell, onlyTokenCells = false) {
 // `nid` is the one caller-supplied value and arrives ALREADY ESCAPED, because CSS.escape is a DOM API
 // and does not belong in a pure core.
 const BASE_VIEW_KINDS = ['table', 'board', 'cards', 'calendar'];
-const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more'];
+const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more', 'mt-qbase-head'];   // #1705: the query strip's editor door
 const BASE_CARD_CLASSES = ['bv-card', 'gv-card'];
 function baseRefocusSelector(d) {
   if (!d) return null;
@@ -26533,7 +26533,29 @@ function closeIo() {
   ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs
   _welcomeOpen = false;   // #1192: whatever closed it, the Welcome chooser is no longer on the card
   const ret = ioReturnFocus; ioReturnFocus = null;
-  if (ret) try { ret.focus(); } catch (_) {}
+  if (!ret) return;
+  try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  // #1705: a commit that renders AFTER closing detaches the target again; follow it one frame on.
+  requestAnimationFrame(() => {
+    if (document.activeElement === document.body) try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  });
+}
+// #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
+// commit re-rendered (render() for a point, refreshTable() for a base widget) and replaced it with a
+// twin. Focusing the detached original does nothing and the caret ends on <body>; dismiss never
+// re-renders, which is why Escape kept the caret and Save, Enter and Create did not. Pure: `find`
+// maps a detached element to its live twin, or null, and a target with no twin is left as it was.
+function liveReturnTarget(el, find) {
+  if (!el || el.isConnected !== false) return el;
+  return find(el) || el;
+}
+// The DOM half: a point by its data-id, a base control by the stable key refreshTable already uses.
+function returnTwin(el) {
+  if (el.classList.contains('node-content') && el.dataset.id)
+    return document.querySelector(`.node-content[data-id="${CSS.escape(el.dataset.id)}"]`);
+  const host = el.closest('.md-table-host[data-id]');
+  const sel = host && baseRefocusSelector(baseFocusDescriptor(el));
+  return sel ? document.querySelector(`.md-table-host[data-id="${CSS.escape(host.dataset.id)}"] ${sel}`) : null;
 }
 // Close the builder window after a nested dialog submits. Clears builder state,
 // dialog globals, ioCard, and the overlay scrim.
@@ -37302,7 +37324,9 @@ async function newFile() {
     validate: () => true,   // blank is fine → falls back to a default name
     onSubmit: async v => {
       const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
+      ioReturnFocus = null;   // #1705: the File button belongs to the old document; the new one starts in its first point
       await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });
+      if (!IS_TOUCH && flatRows.length) focusNode(flatRows[0].node.id);   // as dismissWelcome does
     },
   });
 }
@@ -44315,6 +44339,9 @@ function closeFileMenu() {
   // caret back into a point you'd long moved on from. Clearing here kills that ghost.
   chromeReturn = null;
 }
+// #1705: a row that ACTS and opens nothing (the exports) hands the caret back the way Escape does,
+// instead of leaving it on the File button the menu was opened from.
+function closeFileMenuToCaret() { const back = chromeReturn; closeFileMenu(); chromeReturn = back; restoreChromeReturn(); }
 // keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 // menu is a settings *dialog*, not a menu — rows are buttons; arrow-roving is a
 // convenience on top, not menu semantics.
@@ -44844,10 +44871,10 @@ document.getElementById('workspace-invite').addEventListener('click', () => {
     clipboardFailMessage('page'));   // #1585: the success only when the copy landed
   closeFileMenu();
 });
-document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
-document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
-document.getElementById('btn-export-share').addEventListener('click', () => { exportReadonlyHtml(); closeFileMenu(); });
-document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
+document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-share').addEventListener('click', () => { exportReadonlyHtml(); closeFileMenuToCaret(); });
+document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenuToCaret(); });
 document.getElementById('btn-guide').addEventListener('click', () => { closeFileMenu(); openGuide('shortcuts'); });
 
 // outline level control — collapse to first N levels / expand all

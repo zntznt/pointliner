@@ -2372,6 +2372,73 @@ test('#1464 B3/B5: forms hand the caret back, and Tab stays in the menu', { skip
   await pg.close();
 });
 
+// #1705: the CONFIRM half of #1464 B3. Escape kept the caret because dismiss never re-renders; every
+// commit does, so the element captured on open was detached by close and focus fell to <body>. One
+// check per door the panel measured, each asserting where focus landed AND that typing reaches it.
+test('#1705 confirming a dialog hands focus back where dismissing does', { skip: skip() }, async () => {
+  const onPoint = pg => pg.evaluate(() => document.activeElement.classList.contains('node-content'));
+  const clickBtn = (pg, label) => pg.evaluate(l => [...document.querySelectorAll('#io-card .io-btn')].find(x => x.textContent === l).click(), label);
+  // `/` verbs: a value, then Enter
+  for (const [cmd, val] of [['due', '2026-12-01'], ['check', '1 < 2']]) {
+    const pg = await fresh();
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Task /' + cmd, { delay: 20 }); await pg.waitForTimeout(450);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    assert.equal(await pg.evaluate(() => document.activeElement.tagName), 'INPUT', `/${cmd}: precondition, the form has focus`);
+    await pg.keyboard.type(val, { delay: 15 }); await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    assert.equal(await onPoint(pg), true, `/${cmd}: Enter must hand the caret back to the point, not to <body>`);
+    await pg.keyboard.type('X'); await pg.waitForTimeout(200);
+    assert.match(await pg.evaluate(() => root.children[0].text), /X/, `/${cmd}: and what is typed next lands in the point`);
+    await pg.close();
+  }
+  // Properties, from the point menu: Save
+  { const pg = await fresh();
+    await pg.evaluate(() => {
+      root.children = [mkNode('Task'), mkNode('Two')];
+      root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0]; c.focus(); activeContentId = c.dataset.id;
+    });
+    await pg.waitForTimeout(320);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+    await pg.evaluate(() => [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+      .find(e => (e.innerText || '').split('\n')[0].trim() === 'Add property').focus());
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    await pg.keyboard.type('status'); await pg.keyboard.press('Tab'); await pg.keyboard.type('open'); await pg.waitForTimeout(200);
+    await clickBtn(pg, 'Save'); await pg.waitForTimeout(500);
+    assert.deepEqual(await pg.evaluate(() => root.children[0].props), [{ key: 'status', val: 'open' }], 'precondition, Save saved');
+    assert.equal(await onPoint(pg), true, 'Properties: Save must hand the caret back to the point');
+    await pg.close(); }
+  // Edit query base, from the table view strip: Save
+  { const pg = await fresh();
+    await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>F</title></head><body>' +
+      '<outline text="## Crops"><outline text="Kale {prop beds: 4}"/><outline text="Chard {prop beds: 2}"/></outline></body></opml>')); render(); });
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => [...document.querySelectorAll('.addrow-affordance')].find(d => d.textContent.trim() === '+ Table view').click());
+    await pg.waitForTimeout(500);
+    await pg.locator('.mt-qbase-head').first().focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+    await pg.evaluate(() => { const c = document.getElementById('io-fld-cols'); c.value = 'Title: title'; c.dispatchEvent(new Event('input', { bubbles: true })); });
+    await clickBtn(pg, 'Save'); await pg.waitForTimeout(500);
+    assert.equal(await pg.evaluate(() => document.activeElement.classList.contains('mt-qbase-head') && document.activeElement.isConnected), true,
+      'Edit query base: Save must hand focus back to the strip it was opened from');
+    await pg.close(); }
+  // File menu: New (confirm, name, Create) and Export Markdown
+  for (const row of ['btn-new', 'btn-export-md']) {
+    const pg = await fresh();
+    await pg.keyboard.type('Task'); await pg.waitForTimeout(200);
+    await pg.evaluate(() => document.getElementById('logo-btn').click()); await pg.waitForTimeout(400);
+    await pg.evaluate(id => document.getElementById(id).click(), row); await pg.waitForTimeout(600);
+    if (row === 'btn-new') {
+      await clickBtn(pg, 'New document'); await pg.waitForTimeout(600);
+      await pg.keyboard.type('Second'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(900);
+    }
+    assert.equal(await onPoint(pg), true, `${row}: focus must land in a point, not on the File button`);
+    await pg.keyboard.type('Z'); await pg.waitForTimeout(250);
+    assert.match(await pg.evaluate(() => root.children[0].text), /Z/, `${row}: and typing reaches the document`);
+    await pg.close();
+  }
+});
+
 // 39. #1465 C2 — the docked panels were unreachable, and REACHING for them edited the document.
 // Driven because every claim here is about what focus did: the rows already carried role="link"
 // and tabindex="0" and already had a hide-suppressor for focus-in, so a source pin would have
