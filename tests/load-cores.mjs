@@ -385,6 +385,7 @@ export function loadCores() {
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
+    'isForeignAutosave',             // two tabs, one browser autosave slot: is the slot another tab's doc?
     'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'parseCalMonths','parseCalWeek','parseCalEras','calendarToText','auditCalendarSwitch','buildCalendarFromFields','dateFormsHint',   // #527 PR-C: the dialog grammars + the switch audit
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',

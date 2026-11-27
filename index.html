@@ -18535,7 +18535,10 @@ function buildSharePointText(body, title, url) {
 // title/text/url to the same param) drops ONE point into the inbox on load, then strips the
 // param so a reload never re-appends. HOSTED-only + secure-context (PWA-exception rule): inert
 // and silent from a file:// open. Plain text only — the param is NEVER evaluated. Runs after the
-// doc is restored (the inbox exists); markDirty() from the append then wins over a stale OPFS copy.
+// OPFS boot reconcile (chained on it), because that reconcile can swap in the durable copy and
+// erased an append made before it while the toast still said "Captured". Any link can trigger
+// this, so the write is capped, one undo step, and the toast names it and the undo key.
+const URL_APPEND_MAX = 10000;   // chars: far past any real share, short of a link-sized flood
 function handleUrlAppend() {
   if (location.protocol === 'file:' || !window.isSecureContext) return; // hosted enhancement only
   let params;
@@ -18550,13 +18553,15 @@ function handleUrlAppend() {
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
   } catch {}
   // combine into one point's text: the shared body, then a title/url if they add info
-  const text = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
-  if (!text) return;
+  const full = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
+  if (!full) return;
+  const text = full.slice(0, URL_APPEND_MAX).replace(/[\uD800-\uDBFF]$/, '');   // never split a surrogate pair
   const n = appendTextToInbox(text);   // never null for non-blank text (#559: top level is the zero-setup default)
   if (!n) return;
   render();
   const dest = resolveInbox();
-  flashHint(`✓ Captured to ${dest ? crumbLabel(dest) : 'top level'}: ${textForDisplay(n).slice(0, 40)}`);
+  const cut = text.length < full.length ? ` (first ${URL_APPEND_MAX.toLocaleString('en-US')} characters)` : '';
+  flashHint(`✓ Captured to ${dest ? crumbLabel(dest) : 'top level'}${cut}: ${textForDisplay(n).slice(0, 40)}. ${MOD}+Z to undo`);
 }
 
 // ─── journal / daily-notes ────────────────────────────────────────────────────
@@ -48645,6 +48650,7 @@ function scheduleAutosave() {
   autosaveTimer = setTimeout(writeAutosavePayloadNow, 800);
   _savePending = true; updateSaveStatus();   // #1268: the chip reads "Saving…" until the debounced write lands
 }
+let _persistAsked = false;   // navigator.storage.persist() is requested once, on the first autosave write
 // The debounce body, extracted so the pagehide flush below can run it synchronously.
 function writeAutosavePayloadNow() {
   autosaveTimer = null;
@@ -48654,6 +48660,9 @@ function writeAutosavePayloadNow() {
   if (!loadedFromEmbed) {
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+    // Ask once that the browser not evict this origin's storage under pressure. Best-effort: the
+    // browser may say no, and there is nothing to do differently either way.
+    if (!_persistAsked && navigator.storage && navigator.storage.persist) { _persistAsked = true; try { navigator.storage.persist().catch(() => {}); } catch (_) {} }
   }
   // #1440: `&& dirty` — the folder write follows the DOCUMENT, not the view. Ten of the twenty-four
   // scheduleAutosave() call sites are pure view state (the agenda Running/Done/Overdue filters, its
@@ -48867,6 +48876,18 @@ function storageAdvice({ lsFailed = false, quota = false, opfsOk = false, worksp
   return null;
 }
 
+// Two same-origin tabs in browser mode share ONE autosave slot, so the last writer wins and the
+// other tab's document silently vanished on reload (presence only notices the SAME document).
+// Pure: is the slot's current value a DIFFERENT document another tab wrote while this page was open?
+// `mine` is the payload this tab last wrote (an unchanged slot is ours, whatever doc it holds), and
+// `since` is when this page loaded (a previous session's copy predates it and was restored, not lost).
+function isForeignAutosave(cur, mine, docId, since) {
+  if (!cur || cur === mine || !docId) return false;
+  try { const d = JSON.parse(cur); return !!(d && d.root && d.root.docId && d.root.docId !== docId && d.savedAt > since); }
+  catch (_) { return false; }
+}
+let _lastSlotWrite = null, _foreignSlotNoticed = false;
+
 function writeLocalAutosave(payload) {
   if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   try {
@@ -48909,7 +48930,20 @@ function writeLocalAutosave(payload) {
         }
       }
     }
+    // Before overwriting another tab's document, keep it as this document's restore point (the
+    // adoptDocWithRestorePoint precedent: rekeyed, so File > Restore earlier version finds it).
+    // shortcut: fire-and-forget like the rolling snapshot above; a closing tab may outrun the stash.
+    const cur = localStorage.getItem(AUTOSAVE_KEY);
+    if (isForeignAutosave(cur, _lastSlotWrite, root.docId, performance.timeOrigin)) {
+      stashPayloadAsPrev(rekeyPayloadDocId(cur, root.docId), root.docId).then(ok => {
+        if (ok && _foreignSlotNoticed) return;
+        _foreignSlotNoticed = true;
+        flashHint(ok ? 'Another tab is saving a different document in this browser. Its latest copy is kept: File menu, Restore earlier version.'
+          : 'Another tab is saving a different document in this browser, and its copy could not be kept; storage may be full. Save one of them to a file.');
+      });
+    }
     localStorage.setItem(AUTOSAVE_KEY, payload);
+    _lastSlotWrite = payload;
     if (!opfsOk && payload.length > STORAGE_SOFT_LIMIT) {   // #1113: capability, not presence
       showStorageWarn('soft', 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
@@ -50264,7 +50298,6 @@ syncRollLogLabel();     // #1405: root.rollLog is per-DOCUMENT, and the toolbar 
 render();
 updateTitle();
 refreshIcons();
-handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in the inbox (hosted-only, param stripped)
 // UXP-126's Start-blank door now belongs to showExamplesDoc, the one path that puts the tour on
 // screen. It must NOT fire for the #1192 blank first-run: there the chooser is the door, and an
 // "these are live examples" banner over a blank document would be describing nothing.
@@ -50315,7 +50348,7 @@ handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in
     _opfsReconciled = true;                 // autosave may now run
     if (_autosaveDeferred) { _autosaveDeferred = false; scheduleAutosave(); }
   }
-})();
+})().then(handleUrlAppend);   // #465: ?append= / share_target lands AFTER the reconcile, which may swap in the OPFS copy and would erase it
 
 requestAnimationFrame(() => {
   // A shared snapshot (C1) opens in DISPLAY mode: the recipient should see the rendered,

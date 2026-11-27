@@ -29820,10 +29820,41 @@ test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, top-level
   assert.ok(/appendTextToInbox\(text\)/.test(fn), 'routes through the shared inbox-append helper');
   assert.ok(/top level/.test(fn), '#559: no inbox → the toast names the top-level fallback (the capture still lands)');
   // it is called in the boot sequence after render(), and the manifest advertises share_target
-  assert.ok(/handleUrlAppend\(\);/.test(_src), 'called on boot');
+  // ...chained on the OPFS boot reconcile, which can swap in the durable copy and erased an earlier append
+  assert.ok(_src.includes('})().then(handleUrlAppend);'), 'called on boot, after the OPFS reconcile');
+  assert.ok(!/^handleUrlAppend\(\);/m.test(_src), 'not also called before the reconcile');
+  assert.ok(fn.includes('full.slice(0, URL_APPEND_MAX)'), 'the text a link can write is capped');
+  assert.ok(fn.includes('${MOD}+Z to undo'), 'the toast names the undo, since any link can trigger the write');
   // the append helper never evaluates the param — plain text into node.text (no promoteInlineShorthand)
   const app = fnBody(_src, 'appendTextToInbox');
   assert.ok(/mkNode\(t\)/.test(app) && !/promoteInlineShorthand/.test(app), 'plain text only, never promotes a pill from the URL param');
+});
+
+test('isForeignAutosave: only a DIFFERENT document another tab wrote while this page was open', () => {
+  const since = 1000;
+  const slot = (docId, savedAt) => JSON.stringify({ root: { docId, children: [] }, savedAt });
+  const other = slot('B', 2000);
+  assert.equal(c.isForeignAutosave(other, null, 'A', since), true, 'another tab wrote doc B after this page loaded');
+  assert.equal(c.isForeignAutosave(other, other, 'A', since), false, 'the slot still holds what THIS tab wrote (its own doc swap)');
+  assert.equal(c.isForeignAutosave(slot('A', 2000), null, 'A', since), false, 'the same document: presence warns, nothing to stash');
+  assert.equal(c.isForeignAutosave(slot('B', 500), null, 'A', since), false, 'a previous session wrote it before this page loaded');
+  assert.equal(c.isForeignAutosave(null, null, 'A', since), false, 'an empty slot');
+  assert.equal(c.isForeignAutosave('{not json', null, 'A', since), false, 'an unreadable slot');
+  assert.equal(c.isForeignAutosave(other, null, undefined, since), false, 'this tab has no identity to key a restore point under');
+});
+test('two tabs, one slot: writeLocalAutosave stashes a foreign document before overwriting it, and says so (src pins)', () => {
+  const fn = fnBody(_src, 'writeLocalAutosave');
+  const check = nonEmptyIdx(fn, 'isForeignAutosave(cur, _lastSlotWrite, root.docId, performance.timeOrigin)');
+  const stash = nonEmptyIdx(fn, 'stashPayloadAsPrev(rekeyPayloadDocId(cur, root.docId), root.docId)');
+  const write = nonEmptyIdx(fn, 'localStorage.setItem(AUTOSAVE_KEY, payload);');
+  assert.ok(check < stash && stash < write, 'checked and stashed BEFORE the live slot is overwritten');
+  assert.ok(fn.slice(write).includes('_lastSlotWrite = payload;'), 'records what this tab wrote, so its own later writes are not foreign');
+  assert.ok(fn.includes("flashHint(ok ? 'Another tab is saving a different document"), 'the stash is announced, never silent (P4)');
+});
+test('storage: navigator.storage.persist() is requested once, feature-detected, rejection ignored (src pin)', () => {
+  const fn = fnBody(_src, 'writeAutosavePayloadNow');
+  assert.ok(fn.includes('if (!_persistAsked && navigator.storage && navigator.storage.persist) { _persistAsked = true; try { navigator.storage.persist().catch(() => {}); } catch (_) {} }'),
+    'one guarded, non-blocking persist request on the autosave write');
 });
 
 // ── Per-doc view persistence (idea 5): remember zoom + scroll across doc switches ──

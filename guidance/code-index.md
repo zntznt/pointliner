@@ -1048,7 +1048,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `doCapture`
 - `appendTextToInbox` — Append one markdown-aware point (like doCapture) to the resolved inbox, or to the top
 - `buildSharePointText` — Combine a shared body / title / url into one point's plain text (#465). The body leads; a
-- `handleUrlAppend` — #465: URL-based capture. `?append=<text>` (and the PWA share_target, which routes shared
+- `URL_APPEND_MAX` — #465: URL-based capture. `?append=<text>` (and the PWA share_target, which routes shared
+- `handleUrlAppend`
 
 ## journal strip: capture's twin for today's entry (DL §4: docked strips share one
 
@@ -2707,6 +2708,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `hideStorageWarn`
 - `showWorkspaceWarn` — Lost-workspace-access banner (brief #4). Reuses the dismissible #storage-warn alert
 - `scheduleAutosave`
+- `_persistAsked`
 - `writeAutosavePayloadNow` — The debounce body, extracted so the pagehide flush below can run it synchronously.
 - `flushPendingAutosave` — #802 (agent-review, UXP-195): text typed in the debounce window must survive a tab
 - `_backupNudged` — UXP-119: on the weakest durability tier (no working File System Access, so no folder auto-write and
@@ -2732,6 +2734,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `maybeNudgeTypedLink` — A hand-typed `[[Name]]` that resolveTypedLinks could NOT turn into a link (no point by that
 - `_autosaveDeferred`
 - `storageAdvice` — The localStorage crash-buffer write. With OPFS as the durable store, hitting the
+- `isForeignAutosave` — Two same-origin tabs in browser mode share ONE autosave slot, so the last writer wins and the
+- `_lastSlotWrite`
 - `writeLocalAutosave`
 - `lastAutosaveSavedAt` — Returns the savedAt epoch-ms from the localStorage autosave, or 0 if absent/unreadable.
 - `lastAutosaveFileModified` — #746: the workspace file's lastModified as we recorded it (_wsKnownModified) at the moment
