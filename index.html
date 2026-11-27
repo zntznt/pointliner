@@ -9042,6 +9042,7 @@ function parseDice(input, vars = {}) {
       if (!fate && (sides < 1 || sides > 100000)) return null;
       if (count < 1 || count > 999) return null;
       if (fate && m[4]) return null;                       // exploding Fate makes no sense
+      if (sides === 1 && m[4]) return null;                // #1697: a d1 always rolls its max, so it would explode to the cap
       const exploding = !!m[4];
       // reroll-once (rK): reroll any die whose value ≤ K a single time, then keep the
       // new value. v1 excludes Fate (no numeric face), exploding (odd combo), and
@@ -32597,7 +32598,7 @@ const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5.
 // one evaluation stays near half a second at the top (20000 trials of 25d6), paid once per input since
 // _simMemo holds the result; above it the call is #ERR (999d6! x 20000 froze the tab for 26 s).
 const SIM_WORK_MAX = 500000;
-// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average (parseDice refuses an exploding d1).
 function simDiceCost(terms) {
   let n = 0;
   for (const t of terms) if (t.kind === 'dice') n += t.count * (t.exploding ? Math.min(100, t.sides / (t.sides - 1)) : 1);

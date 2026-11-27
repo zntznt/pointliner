@@ -627,6 +627,16 @@ test('parseDice — reroll rK parses and validates its combinations', () => {
   assert.equal(c.parseDice('4d6r6'), null);        // threshold ≥ sides → null
 });
 
+test('parseDice refuses an exploding d1, which would only stop at the chain cap (#1697)', () => {
+  assert.equal(c.parseDice('1d1!'), null);           // a d1 always rolls its max: 1d1! totalled 100
+  assert.equal(c.parseDice('999d1!'), null);         // 99,900 and a 99,900-face chain to paint
+  assert.equal(c.parseDice('2d1!+3'), null);         // refused inside a sum too
+  assert.equal(c.parseDice('3d1!>=1'), null);        // and as a success pool
+  assert.equal(c.classifyBraceBody('1d1!', new Map(), {}), 'invalid');   // so it gets the .brace-attempt cue
+  assert.equal(c.rollParsed(c.parseDice('1d1')).total, 1);              // a plain d1 is still legal
+  assert.equal(c.parseDice('1d2!')[0].exploding, true);                 // the smallest explodable die
+});
+
 test('rollParsed — reroll replaces a die ≤K once, keeping the new value', () => {
   c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // die0: 1→reroll→6; dice 1–3: 4,4,4
   try {
