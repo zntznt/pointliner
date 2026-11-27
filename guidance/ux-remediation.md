@@ -6816,3 +6816,20 @@ A driven check reproduces it deterministically, with the closing brace and the l
 the frame can only run after the commit: a broken form keeps its cue, a valid pill promotes, focus
 stays out, and plain text is the control. A unit pin holds the guard inside the frame callback
 before the `focus()`. Both have mutants, killed.
+
+## UXP-340 -- a dialog hands the point back with the caret at its start, not where it was
+
+**Status: open.** P1 / P4. Left by #1705.
+
+#1705 made confirm return focus where dismiss already did: Schedule, Check, Properties and the query
+editor now land on the point (or the strip) they were opened from, and File, New and the four
+Export rows land in the document. Driven, both doors then put the caret at offset 0 of the point,
+so the next word typed is PREPENDED (`Task` becomes `XTask`). That is the dialog path's plain
+`focus()`, which enters edit mode at the start; the builder and the File menu already avoid it with
+`armChromeReturn` / `restoreChromeReturn`, which keep the offset.
+
+Also not covered by #1705, measured or read, not driven: the File menu rows that open a dialog
+(Import, Tags, Calendar, and the rest) still clear the armed caret-return and hand back the File
+button; New in folder mode (`newWorkspaceDoc`) was not driven; and the panel's one sighting of the
+File menu staying open after New, with typing going into its search box, did not reproduce on a
+fresh page.

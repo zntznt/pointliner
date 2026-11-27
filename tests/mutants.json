@@ -697,8 +697,8 @@
       "suite": "unit",
       "why": "a title inside a foreign title is still that document's; dropping the anchor one level down reopens the bug at depth 2",
       "file": "index.html",
-      "find": "      if (title) return out(linkText(title, depth + 1, undefined, owner) || id, docId, id);",
-      "replace": "      if (title) return out(linkText(title, depth + 1) || id, docId, id);",
+      "find": "      if (title) return out(linkText(title, depth + 1, undefined, owner, hide) || id, docId, id);",
+      "replace": "      if (title) return out(linkText(title, depth + 1, undefined, undefined, hide) || id, docId, id);",
       "kills": "linkText takes the document a string came FROM"
     },
     {
@@ -3973,8 +3973,8 @@
       "suite": "unit",
       "why": "#1656: the chip evaluates a row formula with no row, so `cost: gal * ppg` shows the raw text while the total counts 400; a source-presence pin, so it needs a standing mutant",
       "file": "index.html",
-      "find": "      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row",
-      "replace": "      const ev = propExprValue(val);",
+      "find": "      const ev = propFormulaValue(propK, val, rowPropVars(node));   // #1656: a row formula reads its own row",
+      "replace": "      const ev = propFormulaValue(propK, val);",
       "kills": "#1656 every row-formula reader"
     },
     {
@@ -4114,6 +4114,14 @@
     {"id": "qbase-arrows-unwired", "suite": "unit", "why": "a list table's cells with no arrow grammar: ArrowUp drops focus to <body> (#1704)", "file": "index.html", "find": "  mtWireQBaseArrows(host, node);   // #1704", "replace": "  //", "kills": "#1704 query base: arrows"},
     {"id": "qbase-rename-row-stale", "suite": "unit", "why": "a Name cell rename that leaves the outline row reading the old name (#1704)", "file": "index.html", "find": "  qbaseRepaintSource(src);   // #1704: its outline row now", "replace": "  // its outline row now", "kills": "#1704 query base: arrows"},
     {"id": "qbase-prop-row-stale", "suite": "unit", "why": "a date or property cell commit that leaves the outline row without its chip (#1704)", "file": "index.html", "find": "    qbaseRepaintSource(src);   // #1704: the outline row too", "replace": "    // the outline row too", "kills": "#1704 query base: arrows"},
-    {"id": "qbase-source-chrome-stale", "suite": "unit", "why": "a date cell commit repaints the text but not the props row, so no due chip (#1704)", "file": "index.html", "find": "  for (const id of affordanceDirtyIds(src, parentOf(src.id) || null)) refreshRowChrome(id);\n}\nfunction qbaseRowLabel", "replace": "}\nfunction qbaseRowLabel", "kills": "#1704 query base: arrows"}
+    {"id": "qbase-source-chrome-stale", "suite": "unit", "why": "a date cell commit repaints the text but not the props row, so no due chip (#1704)", "file": "index.html", "find": "  for (const id of affordanceDirtyIds(src, parentOf(src.id) || null)) refreshRowChrome(id);\n}\nfunction qbaseRowLabel", "replace": "}\nfunction qbaseRowLabel", "kills": "#1704 query base: arrows"},
+    {"id": "dialog-return-twin-unfound", "suite": "browser", "why": "a commit re-renders and detaches the captured return target; with no twin lookup, Save and Enter drop focus to <body> again", "file": "index.html", "find": "function returnTwin(el) {\n", "replace": "function returnTwin(el) {\n  return null;\n", "kills": "#1705 confirming a dialog hands focus back"},
+    {"id": "export-row-drops-caret", "suite": "unit", "why": "one export row left on plain closeFileMenu clears the armed caret and lands on the File button", "file": "index.html", "find": "() => { exportPlainText(); closeFileMenuToCaret(); }", "replace": "() => { exportPlainText(); closeFileMenu(); }", "kills": "#1705 a dialog that commits"},
+    {"id": "redo-flushes-live-edit", "suite": "unit", "why": "redo() must flush the live edit like undo() does, or typing after an undo is overwritten by the old future", "file": "index.html", "find": "  flushActiveTextEdit();   // #1702: record fresh typing", "replace": "  //", "kills": "undo pushes are unconditional here"},
+    {"id": "noexport-footnote-prune", "suite": "unit", "why": "a footnote cited only by an excluded point must not ride the head store into the shareable copy", "file": "index.html", "find": "    p.footnotes = r.footnotes.filter(f => !before.has(f.id) || after.has(f.id));", "replace": "    p.footnotes = r.footnotes;", "kills": "#1698 pruneNoexport drops a footnote"},
+    {"id": "noexport-link-hide", "suite": "unit", "why": "a caption-less link to an excluded point must not print its title in a prose export", "file": "index.html", "find": "      if (hide && hide.has(id)) return out(LINK_HIDDEN_TEXT, docId || '', id);\n", "replace": "", "kills": "#1698 a caption-less link to an excluded point"},
+    {"id": "noexport-link-hide-recursion", "suite": "unit", "why": "a kept title that itself links to an excluded point must carry the hide set one level down", "file": "index.html", "find": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner, hide) || id, docId || '', id);", "replace": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);", "kills": "#1698 a caption-less link to an excluded point"},
+    {"id": "noexport-readonly-note-link", "suite": "unit", "why": "the read-only page's note sink must take the link step, or mdToHtml draws the excluded title", "file": "index.html", "find": "mdToHtml(linkText(node.note, 0, roLink, undefined, hide))", "replace": "mdToHtml(node.note)", "kills": "#1698 a caption-less link to an excluded point"},
+    {"id": "static-table-paint-rounds", "suite": "unit", "why": "a static table paints a computed cell's full persisted precision instead of the display default", "file": "index.html", "find": "? escHtml(formatMathResult(+raw)) : cellMd(raw);", "replace": "? cellMd(raw) : cellMd(raw);", "kills": "#1694 a table formula persists full precision"}
   ]
 }

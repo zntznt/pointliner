@@ -78,6 +78,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rederiveFromText` — Re-derive BOTH derived hints (type AND checked) from node.text, the single source of truth.
 - `textForDisplay` — Text shown in rendered (non-edit) view — block prefix stripped. Also strips a
 - `LINK_RESOLVE_DEPTH` — Render `[[…]]` link tokens in a title to legible PLAIN TEXT for the no-pill,
+- `LINK_HIDDEN_TEXT`
 - `linkText` — #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
 - `mdLinkOut` — #1111: the markdown form a resolved link takes in an exported .md.
 - `CAPTION_TAG_RE` — #943: strip hashtag tokens from a title/snippet shown as a link CAPTION or backlink row.
@@ -189,6 +190,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## subtree aggregation: sum / avg / count over a child PROPERTY
 
 - `propExprValue` — A math pill may aggregate a named property over the point's DIRECT children —
+- `propFormulaValue` — #1699: the value a property SHOWS as computed: propExprValue, except under a reserved key whose
 - `parseDuration` — #1666: an h:mm or h:mm:ss duration as decimal HOURS, the unit of its leading field, so a log's
 - `formatDuration` — The display half: decimal hours as h:mm, with :ss only when the value has seconds once rounded to
 - `rollupFmt` — #1666: the format a rollup pill SHOWS. A bare sum/avg/min/max over a column whose every value is
@@ -586,6 +588,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `headJSONArray`
 - `toOpml`
 - `pruneNoexport` — A root-shaped COPY with every `noexport` subtree removed, for the one serializer whose output
+- `noexportIds` — #1698: the ids of every point inside an excluded subtree. The prose exports resolve a link with an
 - `exportExclusionImpact` — What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
 - `EX_SNIFF` — Encode newlines/tabs/CRs as numeric character references — XML attribute-value
 - `ex`
@@ -1453,6 +1456,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openDialogShell`
 - `openInsertDialog`
 - `closeIo`
+- `liveReturnTarget` — #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
+- `returnTwin` — The DOM half: a point by its data-id, a base control by the stable key refreshTable already uses.
 - `closeBuilderWindow` — Close the builder window after a nested dialog submits. Clears builder state,
 
 ## #844: guard rails for the shared #io-card
@@ -1774,7 +1779,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isConvertExpr` — #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
 - `formatConvertResult` — 4 significant figures, not N decimal places. Two decimals reads fine at 289.68 and destroys
 - `formatMathDisplay`
+- `noiseSnap` — #1694: float noise is snapped where it is MADE, relative to the operands that made it, never by
+- `snappedSum`
 - `formatMathResult`
+- `formatCellValue` — #1694: the value a table formula WRITES into node.text. formatMathResult's 8 s.f. is a display
 - `groupThousands` — #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
 - `formatNumDisplay`
 - `parseNumFmt` — Pure: build a lean fmt record from the math dialog's three text fields (or null when all blank),
@@ -2257,7 +2265,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `importCellValue` — A cell's value: strip surrounding quotes, and reduce a currency/thousands/percent-formatted number
 - `importKeyName` — A header cell → a property key the engine can reference (evalMath idents are [a-z0-9_], and
-- `importSplitRow` — Split one delimited line. Tab-separated is a plain split (Excel/Sheets clipboard is TSV and never
+- `importSplitRows` — #1700: read delimited text into rows, RFC 4180 style. A cell that OPENS with a quote may hold the
+- `importSplitRow` — One delimited line (the first row of it).
 - `sniffDelimited` — Does this text look like a delimited table? Returns the delimiter ('\t' or ',') or null. Strict on
 - `tableToPoints` — Parse a delimited table into ONE heading subtree: row 1 is the header (its columns name the props),
 
@@ -2523,6 +2532,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `fmtKey`
 - `openFileMenu`
 - `closeFileMenu`
+- `closeFileMenuToCaret` — #1705: a row that ACTS and opens nothing (the exports) hands the caret back the way Escape does,
 - `fmItems` — keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 - `fmNavBtns`
 - `saveStatusEl` — #1268: the save-status chip is the door to the safety story — click it to open the File menu (export,
