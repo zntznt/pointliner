@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2222 declarations in 158 sections across 17 domains.**
+**2234 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -56,6 +56,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `vlist`
 - `winStart`
 - `dirty`
+- `_editGen`
 - `_savePending`
 - `_lastSavedAt`
 - `fileHandle`
@@ -289,6 +290,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `repeatOf` — This point's `repeat` phrase (the reserved property's value), or null.
 - `nodePropVars` — The point's OWN numeric properties as a { name: number } overlay, so a bare name
 - `resolveNodeScope` — The merged { name: number } variable scope visible AT a node — the ONE place the two
+- `_evalCheckActive` — Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
 - `evalCheck` — Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 
 ## custom calendars (#527, Tier 1)
@@ -404,8 +406,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `orphanedVarRefCount`
 - `freezeOrphanNote` — #1146: the sentence appended to the freeze's own confirmation. Empty when nothing broke, so
 - `collectVars`
-- `_varMapAtCacheVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
+- `_varDeclIdxVer` — Positional variable resolution (Stage B): the map of variables visible AT a given node,
 - `varMapAt`
+- `varDeclIndex` — One depth-first walk: steps[i] = the add() calls of the i-th declaring point, in token order;
+- `varDeclState` — The accumulator after pack vars and the first k declaring points: what both positional readers
 - `collectNodeDecls` — Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
 - `_posVarMapCacheVer` — #767: per-pill POSITIONAL variable maps for a point that declares a variable in its OWN text.
 - `renderPosVarMaps`
@@ -1794,6 +1798,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `wilsonBound` — #1311: a Wilson score confidence-interval bound for an empirical proportion wins/games, as a
 - `simulateChance` — The share of a Monte-Carlo outcome array satisfying `value <op> t`, as a PERCENTAGE — the reducer
 - `SIM_MAX`
+- `SIM_WORK_MAX` — Work cap for one simulate(): trials x dice rolled per trial. rollParsed costs ~1 us a die, so
+- `simDiceCost` — Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+- `_simMemo` — simulate() results by call text + resolved terms: a pure function of its key, so no doc reset.
 - `hashSeedStr` — FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
 - `sampleGenerator` — Sample a generator N times → an outcome array (numbers for dice, strings otherwise). Uses the same
 - `distSummary` — {mean, p5, p50, p95} of a sample array (non-finite values dropped), or null.
@@ -2037,6 +2044,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `markDirty`
 - `_varPanelTimer` — markDirty fires per keystroke (prose and base cells alike); rebuilding the whole
 - `scheduleVarPanelUpdate`
+- `_agendaTimer` — The open agenda strip, likewise: renderAgenda gathers every dated point (~100 ms at 10k points),
+- `scheduleAgendaRender`
 
 ## undo / redo
 
@@ -2053,6 +2062,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `undo`
 - `redo`
 - `markClean`
+- `writeOutcome` — Pure: what a write that just landed may claim. It serialized document `doc0` at edit generation
 - `displayName` — Pure: the user-facing name for a stored filename , drop the .opml extension and
 - `toFileName` — Pure: turn a user-typed/bare name back into a storage filename (sanitize + ensure
 - `updateTitle`
@@ -2074,6 +2084,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `pickerRefusedMessage` — The message a refused picker earns. Names the browser as the cause and the way out, rather than
 - `adoptDoc` — The single runtime chokepoint for making `newRoot` the live document. Every
 - `newFile`
+- `adoptDocWithRestorePoint` — adoptDoc, leaving the outgoing document a restore point: New and both File > Open paths. In default
 - `commitFileName` — Rename the current outline from the menu header. On a Chromium file handle the
 - `openFile`
 - `saveFile`
@@ -2126,6 +2137,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `reconcileAction` — Folder sync (Dropbox/iCloud/Drive on the workspace folder) can change a doc's
 - `bootPrefersFile` — #746 pure decision: at boot, is the on-disk file the authoritative copy (vs the local
+- `sameSavedOpml` — Pure: do two toOpml() outputs hold the same document? Ignores <dateModified>, stamped fresh on
 - `_wsTmpSeq` — Pure: the temp filename for an atomic write. We write here, then move() over the
 - `tmpWriteName`
 

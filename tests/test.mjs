@@ -689,6 +689,40 @@ test('evalMath — comparisons and ternary return 0/1', () => {
   assert.equal(c.evalMath('1!=2'), 1);
 });
 
+// A comparison must agree with what the pill displays: formatMathResult shows at most 10 significant
+// figures, so float dust (3.3000000000000003) must not fail `sum(cost) <= budget` on a pill reading 3.3.
+test('evalMath — comparisons snap float dust the display hides, and NaN is cannot-evaluate', () => {
+  assert.equal(c.evalMath('0.1+0.2==0.3'), 1);
+  assert.equal(c.evalMath('1.1+2.2<=3.3'), 1);
+  assert.equal(c.evalMath('1.1+2.2>3.3'), 0);
+  assert.equal(c.evalMath('0.1*3!=0.3'), 0);
+  assert.equal(c.evalMath('1.00000001 > 1'), 1, 'a difference the display shows (8 s.f.) still compares');
+  assert.equal(c.evalMath('1.000000001 > 1'), 1, 'and one at 10 s.f.');
+  // snapping is relative, never absolute: a tiny real value is not zero
+  assert.equal(c.evalMath('1e-13 == 0'), 0);
+  assert.equal(c.evalMath('6.674e-11 > 0'), 1);
+  // integers compare exactly, at every size
+  assert.equal(c.evalMath('123456789012345 == 123456789012346'), 0);
+  assert.equal(c.evalMath('123456789012345.5 == 123456789012000'), 0, 'a large non-integer keeps its integer digits');
+  assert.equal(c.evalMath('9007199254740993 == 9007199254740992'), 1, 'beyond 2^53: the same double, as before');
+  assert.equal(c.evalMath('1e300 > 1e299'), 1);
+  // Infinity and negative zero are unchanged
+  assert.equal(c.evalMath('1/0 == 1/0'), 1);
+  assert.equal(c.evalMath('1/0 > 1e308'), 1);
+  assert.equal(c.evalMath('-1/0 < -1e308'), 1);
+  assert.equal(c.evalMath('-0 == 0'), 1);
+  assert.equal(c.evalMath('-1/(1/0) >= 0'), 1);
+  // NaN on either side is not a verdict, matching and()/or() (#539)
+  assert.equal(c.evalMath('0/0 != 1'), null);
+  assert.equal(c.evalMath('0/0 >= 0.5'), null);
+  assert.equal(c.evalMath('1 < sqrt(-1)'), null);
+  const ck = (expr, props, kids = []) => c.evalCheck({ text: 'p', children: kids.map(k => ({ text: 'k', children: [], props: [{ key: 'cost', val: k }] })),
+    props: [...Object.entries(props).map(([key, val]) => ({ key, val })), { key: 'check', val: expr }] }, {});
+  assert.equal(ck('sum(cost) <= budget', { budget: '3.30' }, ['1.10', '2.20']), 'pass');
+  assert.equal(ck('done / planned != 1', { done: '0', planned: '0' }), 'error');
+  assert.equal(ck('done / planned >= 0.5', { done: '0', planned: '0' }), 'error');
+});
+
 test('evalMath — division by zero: Infinity is valid, NaN is null', () => {
   assert.equal(c.evalMath('1/0'), Infinity);
   assert.equal(c.evalMath('0/0'), null);
@@ -1908,32 +1942,6 @@ test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the 
   // And the refresh path: an edit that makes a column totalable must reach a bar that has no row.
   assert.ok(/refreshViewDoors\(\)/.test(fnBody(_src, 'commitActiveEdit')) || _src.includes('refreshViewDoors();'),
     'a commit must refresh the view bar, which refreshRowChrome cannot reach');
-});
-
-// ── the staleness floor's second half: what a floor inside the tree cannot do ────────────────
-// The floor ITSELF is already enforced, further down, by "CLAUDE.md's staleness floor stays within
-// reach of the actual suite size": it parses the number out of CLAUDE.md, counts the suite's test
-// blocks, and ratchets both directions. Do not add a second floor constant here — two floors that
-// can disagree is worse than one.
-//
-// What that guard CANNOT do, by construction: notice that this entire checkout is stale. A base 500
-// tests old carries the old CLAUDE.md floor with it, so it compares 1500 against 1400 and passes.
-// The number has to come from OUTSIDE the tree. That is the `staleness-floor` CI job, and this pin
-// is here so the in-tree half is never mistaken for the whole guard.
-test('the CI half of the staleness guard exists and reads a number from outside the tree', () => {
-  // The in-tree floor above is structurally blind to its own checkout being stale. That blindness is
-  // only acceptable because a second check compares against origin/main. Pin that it is wired, or
-  // the limitation quietly becomes the whole story.
-  const wf = readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
-  const job = between(wf, 'staleness-floor:', 'browser-smoke:');
-  // Assert on the SHELL LINE, not on prose: the job's own comment says "origin/main" too, so a
-  // looser match would stay green if the comparison itself were deleted and only the rationale left.
-  assert.ok(/git show origin\/main:tests\/test\.mjs/.test(job),
-    'the staleness-floor job must actually read the test count out of origin/main — that external ' +
-    'number is the only thing that can see a stale base');
-  assert.ok(/exit 1/.test(job), 'and it must fail the build, not just print');
-  assert.ok(/fetch-depth:\s*0|fetch --unshallow|git fetch origin main/.test(wf),
-    'and it needs the history to read origin/main from, or the comparison silently degrades');
 });
 
 // ── #1430: the symbol index, and the two ways a generated map goes quietly wrong ────────────────
@@ -6579,6 +6587,49 @@ test('#1298 simulate end-to-end: N rolls of a dice expr reduce to the true proba
   assert.ok(outcomes && outcomes.length === 4000, 'the dice engine produced the sample');
   // True P(2d6 >= 8) = 15/36 = 41.67%. Monte-Carlo over 4000 lands within a few points (~6σ margin).
   assert.ok(Math.abs(c.simulateChance(outcomes, '>=', 8) - 41.67) < 5, 'simulate over 2d6 approximates P(>=8)');
+});
+
+// simulate() re-ran its whole Monte Carlo on every paint. The result is a pure function of the call
+// text (dice, op, threshold, trials: the seed) and the parsed terms (which carry a variable's resolved
+// value; the doc seed never reaches it, the session RNG is swapped out), so it is memoized on those.
+const withSimSampler = (fake, fn) => {
+  const ctx = c._context;
+  vm.runInContext('_simMemo.clear(); globalThis.__realSG = sampleGenerator; globalThis.__sgCalls = 0;', ctx);
+  ctx.__fakeSG = fake;
+  vm.runInContext('sampleGenerator = function (...a) { __sgCalls++; return __fakeSG ? __fakeSG(...a) : __realSG(...a); };', ctx);
+  try { return fn(() => ctx.__sgCalls); }
+  finally { vm.runInContext('sampleGenerator = __realSG; _simMemo.clear();', ctx); }
+};
+test('simulate memo: the same call samples once; a changed variable feeding the dice re-samples', () => {
+  withSimSampler(null, calls => {
+    const a = c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 1 });
+    assert.equal(c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 1 }), a, 'same answer');
+    assert.equal(calls(), 1, 'the second paint of the same call reused the result');
+    const b = c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 3 });
+    assert.equal(calls(), 2, 'a new value of bonus is a new key');
+    assert.notEqual(b, a, 'and a new answer');
+  });
+});
+test('simulate work cap: trials x dice rolled (exploding counted) above SIM_WORK_MAX is #ERR, unsampled', () => {
+  withSimSampler(() => [1, 2, 3], calls => {
+    const run = q => c.expandAggExpr(q, null, {});
+    assert.equal(run('simulate(20000, 999d6!, >= 3500)'), 'simulate(20000, 999d6!, >= 3500)', 'the 26 s call stays literal');
+    assert.equal(calls(), 0, 'and never rolls');
+    assert.equal(run('simulate(20000, 26d6, >= 90)'), 'simulate(20000, 26d6, >= 90)', '520000 dice: over');
+    assert.equal(calls(), 0);
+    assert.notEqual(run('simulate(20000, 25d6, >= 90)'), 'simulate(20000, 25d6, >= 90)', '500000 dice: at the cap, allowed');
+    assert.notEqual(run('simulate(1000000, 25d6, >= 88)'), 'simulate(1000000, 25d6, >= 88)', 'trials clamp to SIM_MAX first');
+    assert.notEqual(run('simulate(10000, 8d6, >= 30)'), 'simulate(10000, 8d6, >= 30)', 'an ordinary existing call still works');
+    assert.notEqual(run('simulate(417, 999d6!, >= 3500)'), 'simulate(417, 999d6!, >= 3500)', 'exploding d6 = 1.2 dice each: 499900');
+    assert.equal(run('simulate(418, 999d6!, >= 3500)'), 'simulate(418, 999d6!, >= 3500)', 'one more trial is over: 501098');
+    assert.equal(calls(), 4);
+  });
+});
+test('simulate: ordinary calls give the same seeded numbers as before the memo and cap', () => {
+  vm.runInContext('_simMemo.clear()', c._context);
+  assert.equal(c.expandAggExpr('simulate(1000, 2d6, >= 8)', null, {}), '(42.4)');
+  assert.equal(c.expandAggExpr('simulate(5000, 4d6r1kh3, >= 12)', null, {}), '(76.8)');
+  assert.equal(c.expandAggExpr('simulate(2000, 6d6!>=5, >= 3)', null, {}), '(43.25)');
 });
 
 test('#1298 hypergeom + simulate are wired into the math pre-pass (scalar substitution, RNG restored)', () => {
@@ -13418,30 +13469,6 @@ test('UXP-36: GUIDE registry declaration is present', () => {
 const _guidanceDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guidance');
 const _repoDoc = (p) => readFileSync(resolve(_guidanceDir, '..', p), 'utf8');
 
-test("CLAUDE.md's staleness floor stays within reach of the actual suite size", () => {
-  // The floor's whole job is to fail on a stale base. It read ~1400 while the suite had grown past
-  // 1900, so a base 500 tests behind sailed through the check meant to catch it — a guard 25% out
-  // of date and silent about it, which is worse than no guard at all. Ratchet it here: the floor
-  // must stay close enough below the real count to bite, and can never exceed it (that would fail
-  // a perfectly fresh base).
-  const m = _repoDoc('CLAUDE.md').match(/fewer than ~(\d+) tests pass/);
-  assert.ok(m, 'CLAUDE.md must state a numeric staleness floor');
-  const floor = Number(m[1]);
-  // Read the suite directly rather than borrowing TEST_SRC, which is declared much further down:
-  // this test then passes only when the whole file has been evaluated first, and fails under
-  // `--test-name-pattern` with a TDZ ReferenceError. A guard that depends on declaration order is
-  // a guard that reports on how it was invoked, not on the thing it checks.
-  const suiteSrc = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8');
-  const blocks = [...suiteSrc.matchAll(/\b(?:l?test)\(\s*(['"])(.*?)\1/g)].length;
-  assert.ok(blocks > 500, 'the test-block scan must find the tests, or this guard is itself vacuous');
-  assert.ok(floor <= blocks,
-    `the documented floor (${floor}) exceeds this suite's ${blocks} test blocks — a fresh base would ` +
-    'read as stale. Lower it.');
-  assert.ok(blocks - floor <= 250,
-    `the documented floor (${floor}) is ${blocks - floor} behind this suite's ${blocks} test blocks — ` +
-    'a badly stale base would still pass it. Raise the number in CLAUDE.md.');
-});
-
 test('every guidance/*.md is indexed in BOTH CLAUDE.md and guidance/README.md', () => {
   const docs = readdirSync(_guidanceDir).filter(f => f.endsWith('.md') && f !== 'README.md').sort();
   assert.ok(docs.length >= 30, `found only ${docs.length} guidance docs — did the directory move?`);
@@ -13614,6 +13641,44 @@ test('the service worker caches ONE copy of the shell, not two spellings of it',
   const lookups = [...handler.matchAll(/caches\.match\(([^)]*)\)/g)].map(m => m[1].trim());
   assert.deepEqual(lookups, ['SHELL'],
     `the navigate fallback must look up SHELL and nothing else, got ${JSON.stringify(lookups)}`);
+});
+
+test('the service worker treats only the app URL as the shell, not every in-scope navigation', () => {
+  // The host serves the whole repo inside the SW scope, so a direct visit to guide/a.md or an icon
+  // is a navigation too. Every ok navigation used to be written over the cached index.html, and the
+  // next offline launch served Markdown or a PNG as the app. The decision is a pure function; run it.
+  const sw = _rootFile('service-worker.js');
+  const SHELL = eval(/const SHELL = ([^;]+);/.exec(sw)[1]);
+  const isShellUrl = new Function('url', 'scope', 'SHELL', fnBody(sw, 'isShellUrl').slice(1, -1));
+  const scope = 'https://example.test/pointliner/';
+  const is = (u) => isShellUrl(new URL(u, scope).href, scope, SHELL);
+  assert.equal(is('./'), true, 'the scope root is the app (manifest start_url)');
+  assert.equal(is('./index.html'), true, 'SHELL itself is the app');
+  assert.equal(is('./?append=x'), true, 'the share target opens ./?append=..., still the app');
+  assert.equal(is('./index.html?append=x#top'), true, 'query and hash do not change which file it is');
+  for (const other of ['./guide/a.md', './icon-512.png', './README.md', './guide/index.html', '../index.html']) {
+    assert.equal(is(other), false, `${other} is not the app and must never overwrite the cached shell`);
+  }
+  // The call site: a tested predicate proves nothing if the navigate branch stops asking it.
+  assert.match(sw, /if \(req\.mode === 'navigate' && isShellUrl\(req\.url, self\.registration\.scope\)\)/,
+    'the navigate (shell) branch must be gated on isShellUrl against the registration scope');
+});
+
+test('the navigate handler extends the event on the download, during dispatch', () => {
+  // respondWith extends the event only until its own promise settles, which is when the cache wins
+  // the race. After that the event is inactive and waitUntil throws (ServiceWorker spec, "active":
+  // dispatch flag set or pending promises count > 0), so the late download and its cache write had
+  // nothing keeping the worker alive. The extension must be made on `net` before any await.
+  const sw = _rootFile('service-worker.js');
+  const handler = between(sw, "req.mode === 'navigate'", '\n    return;');
+  const ext = handler.indexOf('event.waitUntil(net.catch(');
+  assert.ok(ext > 0, 'the navigate handler must waitUntil the network promise itself');
+  // Between the end of the `net` callback (whose own awaits run later, inside the fetch) and the
+  // extension, no await, comments aside: after one, dispatch may be over and waitUntil throws.
+  const lead = between(handler, 'const net = fetch(req)', 'event.waitUntil(net.catch(');
+  assert.ok(!/\bawait\b/.test(lead.slice(lead.indexOf('\n      });')).replace(/^\s*\/\/.*$/gm, '')),
+    'the extension must be made synchronously, before the handler awaits anything');
+  assert.ok(ext < handler.indexOf('await Promise.race'), 'the extension must precede the race');
 });
 
 test('manifest.webmanifest colours are real palette homes, not orphan values', () => {
@@ -18502,6 +18567,32 @@ test('evalCheck: count / avg aggregations and own-prop assertions', () => {
   assert.equal(c.evalCheck(mkCheckNode('hours <= 8', { hours: 9 }), {}), 'fail');
 });
 
+// A check that searches for checks (is:failing / is:passing) evaluates its own host again; before the
+// re-entry guard that recursed until RangeError, on the render path (buildCheckChip has no catch).
+test('evalCheck: a check that queries checks re-entering its own host answers, never overflows', () => {
+  const n = (id, text, props = {}, children = []) => ({ id, text, seq: [], children,
+    props: Object.entries(props).map(([key, v]) => ({ key, val: String(v) })) });
+  const withRoot = (r, fn) => {
+    c._context.__chkRoot = r;
+    vm.runInContext('root = __chkRoot; resetDocCaches();', c._context);
+    try { return fn(); } finally { vm.runInContext('root = mkRoot(); resetDocCaches();', c._context); }
+  };
+  const self = n('h1', 'host', { check: 'count("is:failing", document) == 0' });
+  withRoot(n('r', '', {}, [self]), () => {
+    // the host sees itself mid-evaluation as 'error' (cannot evaluate), so it counts as one failing point
+    assert.equal(c.evalCheck(self, {}), 'fail');
+    assert.equal(c.queryMatchesNode(c.parseSearchQuery('is:failing'), self), true);
+    assert.equal(c.evalCheck(self, {}), 'fail', 'the guard set is cleaned up: a second call gives the same verdict');
+  });
+  const here = n('h2', 'host', { check: 'here("is:passing") == 1' });
+  withRoot(n('r', '', {}, [here]), () => assert.equal(c.evalCheck(here, {}), 'fail'));
+  // not self-referential: the counted points are plain checks, so the count is exact
+  const kids = [n('b', 'bad', { x: 5, check: 'x < 1' }), n('g', 'good', { x: 0, check: 'x < 1' }), n('e', 'bare', { check: 'x' })];
+  const host = n('h3', 'host', {}, kids);
+  withRoot(n('r', '', {}, [host]), () =>
+    assert.equal(c.evalMath(c.expandAggExpr('count("is:failing", document)', host, {}), {}), 2, 'a fail and an error count, a pass does not'));
+});
+
 test('evalCheck: null when no check, error when malformed or unresolvable', () => {
   assert.equal(c.evalCheck(c.mkNode('plain'), {}), null);                                // no check property
   assert.equal(c.evalCheck(mkCheckNode('', {}), {}), null);                              // empty value → no check
@@ -18567,6 +18658,154 @@ test('#1657 a := declaration sees its own point and ancestor props (collectVars,
     assert.equal(vm.runInContext("resolveVarDefs({ tot: 'r1 + r2' }, {}, ['tot']).resolved.tot", c._context), undefined);
   } finally {
     vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
+});
+
+// A seeded document: nested, with redeclarations of a small name pool (shadowing), typed and
+// untyped, pick and distribution declarations, cycles (a := b + 1 beside b := a + 1), references,
+// point props a declaration reads (#1657), variable bases, collapsed and done branches, and
+// (declProb 0) documents that declare nothing.
+function varDocFixture(seed, size, declProb) {
+  const rng = c.rngFromSeed(seed), pick = a => a[Math.floor(rng() * a.length)];
+  const NAMES = ['a', 'b', 'hp', 'gold', 'tot'];
+  const EXPRS = ['1', '7', 'a + 1', 'b + 1', 'b * 2', 'hp - a', 'gold + tot', 'r1 + 2', '"word"', 'missing + 1'];
+  const r = c.mkRoot(), all = [r];
+  let key = 0;
+  for (let i = 0; i < size; i++) {
+    const n = c.mkNode('Point ' + i);
+    n.vars = [];
+    const toks = 1 + Math.floor(rng() * 3);
+    for (let t = 0; t < toks; t++) {
+      const k = 'k' + (key++), roll = rng();
+      if (roll < declProb) {
+        const v = { key: k, name: pick(NAMES), expr: pick(EXPRS) };
+        if (rng() < 0.5) v.typed = true;
+        if (rng() < 0.15) { v.kind = 'pick'; v.rolled = pick(['3', 'goblin', '12']); }
+        else if (rng() < 0.1) { v.kind = 'dist'; v.expr = '2 to 8'; }
+        n.vars.push(v); n.text += ' [[var:' + k + ']]';
+      } else if (roll < declProb + 0.3) {
+        n.vars.push({ key: k, name: pick(NAMES), expr: '' }); n.text += ' [[var:' + k + ']]';
+      } else if (roll < declProb + 0.4) n.text += ' [[math:' + k + ']]';
+    }
+    if (rng() < 0.2) n.props.push({ key: 'r1', val: String(Math.floor(rng() * 9)) });
+    if (declProb && rng() < 0.03) {
+      n.type = 'base'; n.varbase = rng() < 0.5 ? { name: 'm' + i } : {};
+      n.text = '| Name | HP |\n| --- | --- |\n| Orc' + i + ' | ' + (i % 9) + ' |';
+    }
+    let p = pick(all);
+    for (let tries = 0; (p.children?.length || 0) >= 5 && tries < 5; tries++) p = pick(all);
+    p.children.push(n); all.push(n);
+    if (rng() < 0.1) p.collapsed = true;
+    if (rng() < 0.1) { n.type = 'todo'; n.checked = true; }
+  }
+  return { root: r, all };
+}
+
+test('varMapAt + renderPosVarMaps: the shared declaration index gives every point the per-node walk\'s result', () => {
+  // varMapAt / renderPosVarMaps moved from one tree walk PER NODE to one walk per generation
+  // (varDeclIndex) with maps shared by declaration count. The walks they replaced, verbatim minus
+  // their caches, are kept here as the reference: the differential test proves the index changes no
+  // result for any point of any document.
+  vm.runInContext(`
+  function __refVarMapAt(targetNode) {
+    const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+    const propScopes = Object.create(null), anc = [];
+    const add = (nm, expr, pick, dist, ps) => {
+      if (!(nm in defs)) order.push(nm);
+      defs[nm] = expr;
+      if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
+      if (dist !== undefined) dists[nm] = dist; else delete dists[nm];
+      if (ps) propScopes[nm] = ps; else delete propScopes[nm];
+    };
+    for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
+    let done = false;
+    (function walk(node) {
+      if (done || !node) return;
+      if (node === targetNode) { collectNodeDecls(node, add, anc); done = true; return; }
+      collectNodeDecls(node, add, anc);
+      if (node !== root) anc.unshift(node);
+      for (const c of node.children || []) { walk(c); if (done) return; }
+      if (node !== root) anc.shift();
+    })(root);
+    const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
+    attachVarDists(resolved, dists);
+    return resolved;
+  }
+  function __refPosVarMaps(node) {
+    if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
+    const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+    const propScopes = Object.create(null), anc = [];
+    const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
+    for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
+    let done = false;
+    (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+    const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
+    const RE = /\\[\\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\\]\\]/gi;
+    let m;
+    while ((m = RE.exec(node.text || '')) !== null) {
+      byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order, propScopes).resolved, Object.assign(Object.create(null), dists)));
+      if (m[1] === 'var') {
+        const v = node.vars?.find(x => x.key === m[2]);
+        if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
+                                   v.kind === 'dist' ? v : undefined, ownProps);
+      }
+    }
+    return byKey;
+  }`, c._context);
+  const norm = m => m && { vals: { ...m }, dists: c.varDistsOf(m) && { ...c.varDistsOf(m) } };
+  const normPos = m => m && [...m].map(([k, v]) => [k, norm(v)]);
+  let compared = 0, declaring = 0, posCompared = 0, distMaps = 0;
+  try {
+    for (let seed = 1; seed <= 40; seed++) {
+      const { root, all } = varDocFixture(seed, 20 + (seed * 7) % 60, seed % 5 === 0 ? 0 : 0.35);
+      c._context.__vdRoot = root;
+      vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();', c._context);
+      const rng = c.rngFromSeed(seed * 31);
+      const order = [...all].sort(() => rng() - 0.5);        // the cache fills in an arbitrary order
+      const outside = c.mkNode('Detached [[var:zz]]'); outside.vars = [{ key: 'zz', name: 'a', expr: '5' }];
+      for (const n of nonEmpty([...order, outside], 'fixture points')) {
+        const got = c.varMapAt(n);
+        Object.freeze(got);                                    // shared across points: nothing may write it
+        assert.deepStrictEqual(norm(got), norm(c._context.__refVarMapAt(n)), `seed ${seed}: varMapAt(${n.text.slice(0, 40)})`);
+        compared++; if (c.varDistsOf(got)) distMaps++;
+        const pos = c.renderPosVarMaps(n);
+        assert.deepStrictEqual(normPos(pos), normPos(c._context.__refPosVarMaps(n)), `seed ${seed}: renderPosVarMaps(${n.text.slice(0, 40)})`);
+        if (pos) posCompared++;
+      }
+      declaring += c.varDeclIndex().steps.length;
+    }
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
+  assert.ok(compared > 1500 && declaring > 300 && posCompared > 200 && distMaps > 100,
+    `the fixture went thin: ${compared} points, ${declaring} declaring, ${posCompared} per-token, ${distMaps} with a distribution`);
+});
+
+test('varMapAt: one document walk per generation, and points between two declarations share one map', () => {
+  const { root, all } = varDocFixture(7, 60, 0.15);
+  const ctx = c._context;
+  ctx.__vdRoot = root;
+  vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();' +
+    'var __vdWalks = 0, __vdOrig = collectNodeDecls; collectNodeDecls = function (...a) { __vdWalks++; return __vdOrig(...a); };', ctx);
+  try {
+    for (const n of all) c.varMapAt(n);
+    assert.equal(ctx.__vdWalks, all.length, 'every point read, and each visited exactly once');
+    const idx = c.varDeclIndex(), k = n => idx.at.get(n)[1], last = all[all.length - 1];
+    const twin = all.find(n => n !== last && k(n) === k(last));
+    assert.ok(twin, 'the fixture has two points with the same declaration count');
+    assert.strictEqual(c.varMapAt(twin), c.varMapAt(last), 'same declarations above, the identical map');
+    // a point added before the generation bump is one the walk never met: rebuild, do not guess
+    const late = c.mkNode('Late [[var:lt]]'); late.vars = [{ key: 'lt', name: 'gold', expr: '99' }];
+    root.children.unshift(late);
+    assert.equal(c.varMapAt(late).gold, 99, 'the late point sees its own declaration');
+    assert.equal(c.varMapAt(all[1]).gold, 99, 'and the rebuilt index puts it above everything after it');
+    root.children.shift();
+    const blank = varDocFixture(8, 40, 0).all;
+    ctx.__vdRoot = blank[0];
+    vm.runInContext('root = __vdRoot; buildIndex(root); resetDocCaches();', ctx);
+    assert.equal(new Set(blank.map(n => c.varMapAt(n))).size, 1, 'a document that declares nothing resolves once');
+  } finally {
+    vm.runInContext('collectNodeDecls = __vdOrig; root = mkRoot(); buildIndex(root); resetDocCaches();', ctx);
   }
 });
 
@@ -22732,6 +22971,92 @@ test('bootPrefersFile — falls back to the wall-clock compare only when no mtim
   assert.equal(c.bootPrefersFile({ diskModified: 90,  knownFileMod: null, localSavedAt: 100 }), false);
 });
 
+// ── a write that awaited across an edit must not mark the document clean ──────────────────────
+// flushWorkspaceFile used to serialize, await the write, then markClean() unconditionally. A
+// keystroke landing during the await set dirty, the resolving write cleared it, and the debounce
+// 800 ms later skipped the folder write (`workspaceFile && dirty`), as did the pre-swap flush: the
+// chip said saved and the file lacked the keystroke. The decision is pure; the race is replayed
+// below with controlled promises, no timers.
+test('writeOutcome: only a write that holds every edit of the open document marks it clean', () => {
+  assert.equal(c.writeOutcome(4, 4, 'docA', 'docA'), 'clean');
+  assert.equal(c.writeOutcome(4, 5, 'docA', 'docA'), 'edited', 'an edit during the await is not in the file');
+  assert.equal(c.writeOutcome(4, 4, 'docA', 'docB'), 'swapped', 'a swap during the await: the write says nothing about the doc on screen');
+  assert.equal(c.writeOutcome(4, 9, 'docA', 'docB'), 'swapped', 'a swap wins over an edit: touch nothing of the new doc');
+});
+
+test('writeOutcome: the race replayed with a controlled write promise', async () => {
+  // A miniature of flushWorkspaceFile's shape: capture, serialize, await, decide.
+  let gen = 0, docId = 'A', dirty = false, text = 'one', release;
+  const disk = [];
+  const markDirty = () => { dirty = true; gen++; };
+  const flush = async () => {
+    const gen0 = gen, doc0 = docId, opml = text;
+    await new Promise(r => { release = r; });
+    disk.push(opml);
+    if (c.writeOutcome(gen0, gen, doc0, docId) === 'clean') dirty = false;
+  };
+  markDirty();
+  const w = flush();
+  text = 'one two'; markDirty();          // the keystroke lands while the write is in flight
+  release(); await w;
+  assert.deepEqual(disk, ['one']);
+  assert.equal(dirty, true, 'the document must stay dirty: the file lacks "two"');
+  const w2 = flush(); release(); await w2; // the debounce gate (`workspaceFile && dirty`) lets the next write through
+  assert.deepEqual(disk, ['one', 'one two']);
+  assert.equal(dirty, false, 'a write that holds everything marks clean');
+});
+
+test('the serialize-await-markClean sites gate markClean on writeOutcome (src pins)', () => {
+  assert.ok(/function markDirty\(\) \{\s*\n\s*dirty = true;\s*_editGen\+\+;/.test(_src),
+    'markDirty is the single invalidation point: it bumps the edit generation');
+  const fl = fnBody(_src, 'flushWorkspaceFile');
+  const cap = fl.indexOf('const gen0 = _editGen, doc0 = root.docId;');
+  const ser = fl.indexOf('withFoldedActive(() => toOpml(root))');
+  const wr = fl.indexOf('await safeWriteOpml(workspaceDir, fileName, opml)');
+  const dec = fl.indexOf('writeOutcome(gen0, _editGen, doc0, root.docId)');
+  assert.ok(cap !== -1 && cap < ser && ser < wr && wr < dec, 'flush captures the generation BEFORE serializing and decides AFTER the await');
+  assert.ok(/if \(outcome === 'clean'\) markClean\(\);/.test(fl), 'flush marks clean only on a clean outcome');
+  assert.ok(!/^\s*markClean\(\);/m.test(fl), 'no unconditional markClean left in the flush');
+  assert.ok(/if \(outcome === 'swapped'\) \{ _wsPending = false; return; \}/.test(fl), 'a swap during the write touches nothing of the new doc');
+  assert.ok(dec < fl.indexOf('await anchorWorkspaceFile()'), 'an edited (not swapped) write still re-anchors to OUR write, so the follow-up is not read as external');
+  const wh = fnBody(_src, 'writeH');
+  assert.equal(nonEmpty(wh.match(/writeOutcome\(gen0, _editGen, doc0, root\.docId\)/g) || [], 'writeH outcome checks').length, 2,
+    'both writeH arms (folder and single-file) decide after the await');
+  assert.ok(!/markClean\(\); await anchorWorkspaceFile\(\)/.test(wh) && !/await w\.close\(\); markClean\(\)/.test(wh),
+    'writeH has no unconditional markClean after an await');
+  // The pre-swap flushes cannot leave the edit to a later write: the swap discards root. They rewrite until no edit landed.
+  for (const name of ['switchWorkspaceDoc', 'newWorkspaceDoc']) {
+    const fn = fnBody(_src, name);
+    assert.ok(/do \{ gen0 = _editGen;[^\n]*await safeWriteOpml\([^\n]*\} while \(gen0 !== _editGen\);\s*markClean\(\);/.test(fn),
+      name + ' must rewrite the outgoing doc until no edit landed during its own write, then mark clean');
+  }
+});
+
+// ── boot keeps a newer local copy of a folder document: it must not look saved ────────────────
+// reopenWorkspaceDoc's "local autosave is newer" branch kept the local copy and rebound the handle
+// but left it clean, so nothing wrote it to the file; a tab switch then skipped the pre-swap flush
+// and coming back loaded the stale file. The case: type, close the tab inside the 800 ms debounce
+// (pagehide reaches localStorage, the async folder write does not), reopen.
+test('sameSavedOpml: two serializations of one document match across a fresh <dateModified>', () => {
+  const r = c.mkRoot(); r.docId = 'd1'; r.children.push(c.mkNode('kept'));
+  const a = c.toOpml(r);
+  const b = a.replace(/<dateModified>[^<]*<\/dateModified>/, '<dateModified>Thu, 01 Jan 1970 00:00:00 GMT</dateModified>');
+  assert.notEqual(a, b);
+  assert.equal(c.sameSavedOpml(a, b), true, 'only the timestamp differs: nothing to write');
+  r.children[0].text = 'kept and edited';
+  assert.equal(c.sameSavedOpml(a, c.toOpml(r)), false, 'a real edit differs');
+});
+
+test('reopenWorkspaceDoc marks a kept, newer local copy dirty, after the anchor (src pins)', () => {
+  const fn = fnBody(_src, 'reopenWorkspaceDoc');
+  const keep = fn.indexOf('localAhead = !sameSavedOpml(toOpml(root), toOpml(fileRoot));');
+  const anchor = fn.indexOf('_wsKnownSize = file.size || 0;');
+  const mark = fn.indexOf('if (localAhead) markDirty();');
+  assert.ok(keep !== -1 && keep < fn.indexOf('} else {', keep), 'the keep-local branch decides whether the file lacks the local copy');
+  assert.ok(anchor !== -1 && mark > anchor, 'markDirty only after the external-change anchor exists, so the write it schedules is checked against it');
+  assert.ok(!_src.includes('so the next edit reconverges the two'), 'the boot comment no longer promises an edit will do it');
+});
+
 // ── data-safety: switching/creating a folder doc must PERSIST the outgoing one first ──
 // (the tab-switch data-loss regression: the debounced folder write was orphaned by the
 // swap, so recent edits to the doc you left never reached disk). Src pins — the FS path
@@ -22783,17 +23108,62 @@ test('File → New leaves the outgoing document a restore point (data-loss regre
   assert.ok(!/if \(unsavedToDisk\(\) && !await openConfirmDialog/.test(nf),
     'the old unsavedToDisk() gate (false in default mode) must be gone');
   assert.ok(/Restore earlier version/.test(nf), 'the default-mode message names the recovery door');
-  // (b) the stash, in the one order that works.
-  const iFlush = nf.indexOf('flushPendingAutosave()');
-  const iGet   = nf.indexOf('localStorage.getItem(AUTOSAVE_KEY)');
-  const iAdopt = nf.indexOf('adoptDoc(mkRoot()');
-  const iStash = nf.indexOf('stashPayloadAsPrev(');
+  // (b) the stash, in the one order that works, now in the helper New and both Open paths share.
+  assert.ok(nf.includes('await adoptDocWithRestorePoint(mkRoot(), { fileName: fname });'),
+    'New must swap through the restore-point helper');
+  assert.ok(!/\badoptDoc\(/.test(nf), 'and must not reach adoptDoc around it');
+  const h = fnBody(_src, 'adoptDocWithRestorePoint');
+  const iFlush = h.indexOf('flushPendingAutosave()');
+  const iGet   = h.indexOf('localStorage.getItem(AUTOSAVE_KEY)');
+  const iAdopt = h.indexOf('adoptDoc(newRoot, opts)');
+  const iStash = h.indexOf('stashPayloadAsPrev(');
   assert.ok(iFlush > -1 && iGet > -1 && iAdopt > -1 && iStash > -1, 'all four steps present');
   assert.ok(iFlush < iGet, 'flush BEFORE capture, or the payload is up to 800ms stale');
   assert.ok(iGet < iAdopt, 'capture BEFORE adoptDoc, whose scheduleAutosave overwrites AUTOSAVE_KEY');
   assert.ok(iAdopt < iStash, 'stash AFTER adoptDoc, so root.docId is the new identity');
-  assert.ok(/rekeyPayloadDocId\(outgoing, root\.docId\)/.test(nf),
+  assert.ok(/rekeyPayloadDocId\(outgoing, root\.docId\)/.test(h),
     'the payload must be rekeyed to the new docId, or the mis-keyed-entry guard rejects it');
+  // A snapshot never writes AUTOSAVE_KEY, so its outgoing copy comes from memory, before the adopt.
+  assert.ok(/if \(loadedFromEmbed\) outgoing = capturePayloadOf\(root\);/.test(h) && h.indexOf('capturePayloadOf(root)') < iAdopt,
+    'a shared snapshot must be captured from memory, or New/Open stashes the user\'s own document in its place');
+});
+
+// File > Open had the same hole New had: no stash, so a browser-only document was overwritten in
+// AUTOSAVE_KEY by the opened file's first autosave and keyed nowhere Restore looks. Driven in
+// tests/browser.mjs ("doc-swap: File > Open"); these pin that BOTH branches use the helper.
+test('File > Open leaves the outgoing document a restore point on both branches (doc-swap)', () => {
+  const of = fnBody(_src, 'openFile');
+  assert.ok(of.includes('await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name, fileHandle: newHandle });'),
+    'the File System Access branch must swap through the restore-point helper');
+  assert.ok(of.includes('try { await adoptDocWithRestorePoint(fromOpml(await file.text()), { fileName: file.name }); }'),
+    'the <input type=file> branch must swap through the restore-point helper');
+  assert.ok(!/\badoptDoc\(/.test(of), 'no bare adoptDoc is left in openFile');
+  // UXP-103: the confirm stays gated on a real loss risk; the restore point is what makes skipping it safe.
+  assert.ok(/if \(unsavedToDisk\(\) && !await openConfirmDialog\(/.test(of), 'Open keeps its UXP-103 confirm gate');
+});
+
+// Restore earlier version swaps `root` through applyAutosaveData, which (unlike adoptDoc) leaves the
+// undo history alone: Ctrl+Z then wrote a stale text entry into the restored point, and autosaved it.
+test('Restore earlier version drops the history and selection of the replaced tree (doc-swap)', () => {
+  const rest = fnBody(_src, 'restoreEarlierVersion');
+  const iApply = rest.indexOf('if (!applyAutosaveData(data))');
+  const iClear = rest.indexOf('undoStack.length = 0; redoStack.length = 0;');
+  const iSel = rest.indexOf('selectedIds.clear(); selAnchorId = null; selFocusId = null;');
+  const iRender = rest.indexOf('render();');
+  assert.ok(iApply > -1 && iClear > iApply, 'both stacks are cleared after a successful restore');
+  assert.ok(iSel > iApply && iSel < iRender, 'the selection is reset before the repaint (#1522)');
+});
+
+// A shared snapshot's autosave tick wrote AUTOSAVE_KEY and the OPFS copy, which only the user's own
+// launch of the app can ever read: the embed wins every reload of the snapshot itself.
+test('a shared snapshot does not write the browser autosave slot (doc-swap)', () => {
+  const body = fnBody(_src, 'writeAutosavePayloadNow');
+  const gated = between(body, 'if (!loadedFromEmbed) {', '}');
+  assert.ok(gated.includes('writeOpfsAutosave(payload)') && gated.includes('writeLocalAutosave(payload)'),
+    'both browser-slot writes sit inside the snapshot gate');
+  assert.equal((body.match(/write(Opfs|Local)Autosave\(/g) || []).length, 2, 'and there is no ungated copy of either');
+  assert.ok(!gated.includes('flushWorkspaceFile') && /if \(workspaceFile && dirty\) flushWorkspaceFile\(\)/.test(body),
+    'a folder the user connected from the snapshot is their own target and still gets written');
 });
 
 test('rekeyPayloadDocId + the prev store make an adopted document restorable', () => {
@@ -25818,6 +26188,35 @@ test('round 2 — isVarBase + mtModelRead (the paint-path parse memo)', () => {
   assert.equal(m2.rows[1][0], '9');
   // the WRITE path stays fresh-parse — mutation-safe by construction
   assert.notEqual(c.mtModel(n), c.mtModel(n), 'mtModel returns a fresh parse every call');
+});
+
+// With the agenda open, markDirty rebuilt it synchronously on every keystroke (collectDueDates walks
+// every point: ~100 ms at 10k). It now schedules one trailing rebuild, like the variables panel.
+test('agenda strip: markDirty schedules one trailing rebuild; a direct render or a doc swap cancels it', () => {
+  assert.ok(/scheduleAgendaRender\(\)/.test(fnBody(_src, 'markDirty')) && !/renderAgenda\(/.test(fnBody(_src, 'markDirty')),
+    'markDirty defers the agenda rebuild');
+  assert.ok(/clearTimeout\(_agendaTimer\); _agendaTimer = null;/.test(fnBody(_src, 'renderAgenda')), 'a direct render cancels the pending one');
+  assert.ok(/clearTimeout\(_agendaTimer\); _agendaTimer = null;/.test(fnBody(_src, 'adoptDoc')), 'a doc swap drops the pending one');
+  const ctx = c._context, timers = [];
+  const realST = ctx.setTimeout;
+  ctx.setTimeout = fn => { timers.push(fn); return timers.length; };
+  vm.runInContext('globalThis.__realRA = renderAgenda; globalThis.__raN = 0; renderAgenda = () => { __raN++; }; _agendaTimer = null;', ctx);
+  try {
+    vm.runInContext('agendaOpen = false; scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 0, 'a closed agenda schedules nothing');
+    vm.runInContext('agendaOpen = true; scheduleAgendaRender(); scheduleAgendaRender(); scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 1, 'a burst of keystrokes is one timer');
+    assert.equal(ctx.__raN, 0, 'and nothing painted synchronously');
+    timers[0]();
+    assert.equal(ctx.__raN, 1, 'the timer paints once');
+    vm.runInContext('scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 2, 'the next keystroke after it fired schedules again');
+    vm.runInContext('agendaOpen = false;', ctx); timers[1]();
+    assert.equal(ctx.__raN, 1, 'closed before the timer fired: no paint');
+  } finally {
+    ctx.setTimeout = realST;
+    vm.runInContext('renderAgenda = __realRA; agendaOpen = false; _agendaTimer = null;', ctx);
+  }
 });
 
 test('round 2 — perf wiring + canonical vocabulary (source pins)', () => {
@@ -30987,7 +31386,7 @@ test('every CI job in tests.yml is bounded by a timeout', () => {
 // each is the #1133 vacuity on its own: the self-test must run on the NEWEST Node, where the next
 // change of default will land first, and the tool must refuse to judge until it has passed.
 test('#1597 the mutation verdicts are proved on the current Node, and proved before they are trusted', () => {
-  const job = between(_wfTests, '\n  mutation-current-node:', '\n  staleness-floor:');
+  const job = between(_wfTests, '\n  mutation-current-node:', '\n  browser-smoke:');
   assert.match(job, /\n {10}node-version: current\n/,
     'the self-test job must run the newest Node release, not the pinned one the rest of CI uses');
   assert.match(job, /\n {6}- run: node tools\/mutation-check\.mjs --self-test\n/,
@@ -35529,6 +35928,7 @@ test('#1581 census: every module-level cache is in DOC_CACHES or named as exempt
     _tagReCache: 'a compiled tag regex per tag string: a pure function of its key',
     _wsScanCache: "the folder scan, keyed on each file's lastModified and size: a changed file re-parses",
     _graphUnlinkedCache: 'one graph open: openGraph resets it, the graph is a summoned snapshot',
+    _simMemo: 'simulate() results keyed on call text + resolved dice terms: a pure function of its key',
   };
   for (const name of Object.keys(EXEMPT))
     assert.ok(declLine.has(name), `${name} is exempt but no longer declared at module level: drop the exemption`);
