@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2231 declarations in 159 sections across 17 domains.**
+**2232 declarations in 159 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1461,6 +1461,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `DICE_SNIFF`
 - `DICE_ATTEMPT` — A die STARTED but missing its number of sides: {2d}, {2d+3}, {10d}. The `d` must be followed by
 - `splitTopLevel` — Split `str` on top-level `sep`, ignoring separators nested inside {...}.
+- `braceDepthExceeds` — The brace walks that call matchBrace from every `{` (mdInline's nested pass, promoteInlineShorthand)
 - `matchBrace` — Index of the `}` matching the `{` at `open`; -1 if unmatched.
 - `codeSpanRanges` — Inline backtick code spans are the escape hatch: `{2d6}` should stay LITERAL, not promote to a pill.
 - `inCodeSpan`
