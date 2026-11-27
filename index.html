@@ -5556,7 +5556,9 @@ function childrenComputePillsNotProp(node, prop, depth = 1) {
   const kids = collectScoped(node || {}, depth);
   if (!kids.length) return false;
   const computes = c => (c.math?.length) || (c.vars?.length) || (c.est?.length);
-  return kids.some(computes) && kids.every(c => childPropNumber(c, prop) === null);
+  if (!kids.some(computes) || !kids.every(c => childPropNumber(c, prop) === null)) return false;
+  // #1709: the prop stored DEEPER means those pills are subtotals, and widening the scope is the fix
+  return !collectScoped(node || {}, Infinity).some(c => childPropNumber(c, prop) !== null);
 }
 
 // #914: a QUOTED query reducer ({= count("q")} / {= sum("q", prop)}) that is subtree-scoped (no
