@@ -9979,13 +9979,15 @@ function mathReasonPhrase(why, expr) {
 // consumers: Calculate (which has always parsed cells this way) and Sort (which had no
 // numeric reading at all, so the same column summed to 212 and ordered 10, 100, 3, 99 —
 // two commands in one menu with two answers about what the column IS). Returns a number,
-// or null when the cell holds none. Lifted out of computeTable unchanged, parseFloat and
-// isNaN included, so Calculate's answers are byte-identical to what they were.
+// or null when the cell holds none. parseFloat and isNaN, as computeTable always read cells.
+// #1693: a grouped or currency cell ("1,000", "$5") is first reduced the way an imported
+// cell is, so it reads as the number it shows, as propScalar reads the same value as a
+// property. parseFloat alone read "1,000" as 1 and "$5" as nothing: silent wrong totals.
 function cellNum(raw) {
   const s = (raw == null ? '' : String(raw)).trim();
   if (s === '') return null;
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading, moved not rewritten
+  const n = parseFloat(importCellValue(s));
+  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading
 }
 // Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
 // numeric comparison on. Deliberately all-or-nothing: one word in the column and the

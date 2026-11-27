@@ -26786,12 +26786,22 @@ test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calc
   assert.deepEqual(col(blanks, 1, 'asc'), ['3', '10', '']);
   assert.deepEqual(col(blanks, 1, 'desc'), ['10', '3', '']);
 
-  // cellNum is Calculate's reading, lifted out unchanged: parseFloat, so "10 gold" is 10
-  // (Calculate totals it as 10 too) and "$10" is nothing; blanks and null are nothing.
+  // cellNum is Calculate's reading: parseFloat, so "10 gold" is 10 (Calculate totals it as
+  // 10 too); blanks and null are nothing. #1693: a grouped or currency cell reads as the
+  // number it shows, as a property value does, not "1,000" as 1 and "$10" as nothing.
   assert.deepEqual([c.cellNum('10'), c.cellNum('  10.5 '), c.cellNum('10 gold'), c.cellNum('-2')],
     [10, 10.5, 10, -2]);
-  assert.deepEqual([c.cellNum('$10'), c.cellNum(''), c.cellNum('   '), c.cellNum(null), c.cellNum(undefined)],
-    [null, null, null, null, null]);
+  assert.deepEqual([c.cellNum('1,000'), c.cellNum('$10'), c.cellNum('$3,200.50'), c.cellNum('-$5'), c.cellNum('\u20ac7')],
+    [1000, 10, 3200.5, -5, 7]);
+  assert.equal(c.cellNum('1,000'), c.propScalar('1,000'), 'one value, one number, cell or property');
+  assert.deepEqual([c.cellNum(''), c.cellNum('   '), c.cellNum(null), c.cellNum(undefined)],
+    [null, null, null, null]);
+  // and through both consumers: Calculate's total and Sort's order
+  const sum = (md, f, r) => c.computeTable(c.parseTable(md), f)[r][1];
+  assert.equal(sum('| item | cost |\n| --- | --- |\n| a | 1,000 |\n| b | 50 |\n| c | 200 |\n| total | |', '@5$2=vsum(@2..@4)', 4), '1250');
+  assert.equal(sum('| item | cost |\n| --- | --- |\n| a | $5 |\n| b | $40 |\n| total | |', '@4$2=vsum(@2..@3)', 3), '45');
+  assert.deepEqual(col([['H', 'C'], ['a', '1,000'], ['b', '50'], ['c', '200']], 1, 'asc'), ['50', '200', '1,000']);
+  assert.deepEqual(col([['H', 'C'], ['a', '$5'], ['b', '$100'], ['c', '$40']], 1, 'asc'), ['$5', '$40', '$100']);
   // colIsNumeric: every non-empty cell must read, and an all-blank column is NOT numeric
   assert.equal(c.colIsNumeric(host(rows), 1, 4), true);
   assert.equal(c.colIsNumeric(host(mixed), 1, 3), false);
