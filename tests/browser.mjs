@@ -2372,6 +2372,73 @@ test('#1464 B3/B5: forms hand the caret back, and Tab stays in the menu', { skip
   await pg.close();
 });
 
+// #1705: the CONFIRM half of #1464 B3. Escape kept the caret because dismiss never re-renders; every
+// commit does, so the element captured on open was detached by close and focus fell to <body>. One
+// check per door the panel measured, each asserting where focus landed AND that typing reaches it.
+test('#1705 confirming a dialog hands focus back where dismissing does', { skip: skip() }, async () => {
+  const onPoint = pg => pg.evaluate(() => document.activeElement.classList.contains('node-content'));
+  const clickBtn = (pg, label) => pg.evaluate(l => [...document.querySelectorAll('#io-card .io-btn')].find(x => x.textContent === l).click(), label);
+  // `/` verbs: a value, then Enter
+  for (const [cmd, val] of [['due', '2026-12-01'], ['check', '1 < 2']]) {
+    const pg = await fresh();
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Task /' + cmd, { delay: 20 }); await pg.waitForTimeout(450);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    assert.equal(await pg.evaluate(() => document.activeElement.tagName), 'INPUT', `/${cmd}: precondition, the form has focus`);
+    await pg.keyboard.type(val, { delay: 15 }); await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    assert.equal(await onPoint(pg), true, `/${cmd}: Enter must hand the caret back to the point, not to <body>`);
+    await pg.keyboard.type('X'); await pg.waitForTimeout(200);
+    assert.match(await pg.evaluate(() => root.children[0].text), /X/, `/${cmd}: and what is typed next lands in the point`);
+    await pg.close();
+  }
+  // Properties, from the point menu: Save
+  { const pg = await fresh();
+    await pg.evaluate(() => {
+      root.children = [mkNode('Task'), mkNode('Two')];
+      root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0]; c.focus(); activeContentId = c.dataset.id;
+    });
+    await pg.waitForTimeout(320);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+    await pg.evaluate(() => [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+      .find(e => (e.innerText || '').split('\n')[0].trim() === 'Add property').focus());
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    await pg.keyboard.type('status'); await pg.keyboard.press('Tab'); await pg.keyboard.type('open'); await pg.waitForTimeout(200);
+    await clickBtn(pg, 'Save'); await pg.waitForTimeout(500);
+    assert.deepEqual(await pg.evaluate(() => root.children[0].props), [{ key: 'status', val: 'open' }], 'precondition, Save saved');
+    assert.equal(await onPoint(pg), true, 'Properties: Save must hand the caret back to the point');
+    await pg.close(); }
+  // Edit query base, from the table view strip: Save
+  { const pg = await fresh();
+    await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>F</title></head><body>' +
+      '<outline text="## Crops"><outline text="Kale {prop beds: 4}"/><outline text="Chard {prop beds: 2}"/></outline></body></opml>')); render(); });
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => [...document.querySelectorAll('.addrow-affordance')].find(d => d.textContent.trim() === '+ Table view').click());
+    await pg.waitForTimeout(500);
+    await pg.locator('.mt-qbase-head').first().focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+    await pg.evaluate(() => { const c = document.getElementById('io-fld-cols'); c.value = 'Title: title'; c.dispatchEvent(new Event('input', { bubbles: true })); });
+    await clickBtn(pg, 'Save'); await pg.waitForTimeout(500);
+    assert.equal(await pg.evaluate(() => document.activeElement.classList.contains('mt-qbase-head') && document.activeElement.isConnected), true,
+      'Edit query base: Save must hand focus back to the strip it was opened from');
+    await pg.close(); }
+  // File menu: New (confirm, name, Create) and Export Markdown
+  for (const row of ['btn-new', 'btn-export-md']) {
+    const pg = await fresh();
+    await pg.keyboard.type('Task'); await pg.waitForTimeout(200);
+    await pg.evaluate(() => document.getElementById('logo-btn').click()); await pg.waitForTimeout(400);
+    await pg.evaluate(id => document.getElementById(id).click(), row); await pg.waitForTimeout(600);
+    if (row === 'btn-new') {
+      await clickBtn(pg, 'New document'); await pg.waitForTimeout(600);
+      await pg.keyboard.type('Second'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(900);
+    }
+    assert.equal(await onPoint(pg), true, `${row}: focus must land in a point, not on the File button`);
+    await pg.keyboard.type('Z'); await pg.waitForTimeout(250);
+    assert.match(await pg.evaluate(() => root.children[0].text), /Z/, `${row}: and typing reaches the document`);
+    await pg.close();
+  }
+});
+
 // 39. #1465 C2 — the docked panels were unreachable, and REACHING for them edited the document.
 // Driven because every claim here is about what focus did: the rows already carried role="link"
 // and tabindex="0" and already had a hide-suppressor for focus-in, so a source pin would have
@@ -4528,6 +4595,38 @@ test('#1507 undo brings back a deleted pill whole, and redo takes it away again'
     assert.equal(redone.n, 0, `${sidecar}: and the record goes with the token, not back to orphaned`);
     await pg.close();
   }
+});
+
+// #1702 — typing after an undo must end the redo branch. undo() flushed the live edit before popping;
+// redo() did not, so the new typing was never recorded, redoStack was never cleared, and Ctrl+Shift+Z
+// laid the old future over it: " three" vanished and no history step held it.
+test('#1702 redo after fresh typing keeps that typing and redoes nothing', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('one'), mkNode('other')]; buildIndex(root);
+    undoStack.length = 0; redoStack.length = 0; markDirty(); render();
+  });
+  await pg.waitForTimeout(250);
+  const row = i => pg.locator('.node-content').nth(i);
+  const text = () => pg.evaluate(() => root.children[0].text);
+  await row(0).click(); await pg.keyboard.press('End'); await pg.keyboard.type(' two');
+  await row(1).click(); await pg.waitForTimeout(150);
+  assert.equal(await text(), 'one two', 'precondition: the first edit committed');
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(250);
+  assert.equal(await text(), 'one', 'precondition: undo took it back');
+  await row(0).click(); await pg.keyboard.press('End'); await pg.keyboard.type(' three');
+  await pg.waitForTimeout(100);
+  await pg.keyboard.press('Control+Shift+z'); await pg.waitForTimeout(250);
+  const live = await pg.evaluate(() => ({
+    model: root.children[0].text, dom: document.querySelectorAll('.node-content')[0].textContent,
+    redo: redoStack.length,
+  }));
+  assert.equal(live.model, 'one three', 'redo must not lay the old future over the new typing');
+  assert.equal(live.dom, 'one three', 'and the row must show it');
+  assert.equal(live.redo, 0, 'the new typing ended the redo branch');
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(250);
+  assert.equal(await text(), 'one', 'and the typing is one undo step, so it is recoverable');
+  await pg.close();
 });
 
 // 65. #1508 — the Agenda Month grid's keyboard. A <button> fires `click` on Enter/Space and NEVER
@@ -9768,6 +9867,57 @@ test('table view slice 4: the keyboard renames, moves and adds points, and undo 
     await pg.keyboard.press('Alt+ArrowUp'); await pg.waitForTimeout(300);
     assert.deepEqual(await ev(s4.list), ['Kale #veg', 'Chard', 'Beans'], 'a sorted table does not move points');
     assert.match(await ev(s4.hint), /sorted by beds\. Clear the sort/);
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+// #1704 (panel #9): a list's table view had no arrow grammar, so ArrowUp, the edge ArrowDowns and
+// Shift+Tab from the first cell dropped focus to <body>; and a Name or date edit reached the point
+// but its outline row kept the old text until someone clicked into it. Driven with real keys,
+// asserting where focus LANDED and what the outline row SAYS after each commit.
+test('#1704 a list table view: arrows and Shift+Tab keep focus in the grid, and a commit repaints the outline row', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(o => { adoptDoc(fromOpml(o)); const l = root.children[0];
+      l.children.forEach(n => setDateProp(n, 'due', '2026-12-01')); render();
+      createListTableView(l, listTableSpec(l, knownStates(root)).cols); }, SLICE4_OPML);
+    await pg.waitForTimeout(400);
+    const at = () => pg.evaluate(() => { const a = document.activeElement;
+      return a.matches('.mt-qsort') ? 'head:' + a.dataset.c : a.matches('td.mt-cell') ? nodeById(a.closest('tr').dataset.nid).text.split(' ')[0] + ':' + a.dataset.c
+        : a.matches('.node-content') ? 'point:' + a.innerText.trim() : a.tagName; });
+    const key = async k => { await pg.keyboard.press(k); await pg.waitForTimeout(150); return at(); };
+    const dueC = await pg.evaluate(() => String(qbaseColList(root.children[0].children[0].qbase.cols).findIndex(x => x.field.trim() === 'due')));
+    assert.notEqual(dueC, '-1', 'the table has a due column');
+
+    await cellOf(pg, 'Kale', 0).click();
+    assert.equal(await key('ArrowUp'), 'head:0', 'ArrowUp from the first row reaches its sort header');
+    assert.equal(await key('ArrowDown'), 'Kale:0', 'and ArrowDown comes back');
+    assert.equal(await key('ArrowDown'), 'Chard:0', 'down a row');
+    await cellOf(pg, 'Beans', 0).click();
+    assert.equal(await key('ArrowDown'), 'point:Kale #veg', 'down past the last row leaves for the next point, not <body>');
+    await cellOf(pg, 'Kale', 0).click();
+    assert.equal(await key('Shift+Tab'), 'head:' + dueC, 'Shift+Tab from the first cell reaches the header, not <body>');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);   // the header still sorts from here
+    assert.ok((await at()).startsWith('head:'), 'Enter on the header keeps focus there');
+    await pg.evaluate(() => { delete root.children[0].children[0].qbase.sort; markDirty(); render(); });
+    await pg.waitForTimeout(300);
+
+    const row = t => pg.evaluate(t => { const n = root.children[0].children.find(n => n.text.startsWith(t));
+      const d = document.querySelector(`.node[data-id="${n.id}"]`);
+      return [d.querySelector(':scope > .node-row > .node-content').innerText.trim(),
+        d.querySelector(':scope > .node-props-row')?.innerText.replace(/\s+/g, ' ').trim() || '']; }, t);
+    await cellOf(pg, 'Chard', 0).click();
+    await pg.keyboard.press('End'); await pg.keyboard.type('s'); await pg.keyboard.press('Enter');
+    await pg.waitForTimeout(400);
+    assert.equal(await at(), 'Beans:0', 'Enter moved down a row');
+    assert.match((await row('Chards'))[0], /^Chards/, 'the renamed point\'s outline row reads the new name while focus stays in the grid');
+    const dueWas = (await row('Beans'))[1];
+    await cellOf(pg, 'Beans', dueC).click();
+    await pg.keyboard.press('Control+a'); await pg.keyboard.type('2026-12-03'); await pg.keyboard.press('Shift+Enter');
+    await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => root.children[0].children.at(-1).props.find(p => p.key === 'due')?.val), '2026-12-03');
+    const dueNow = (await row('Beans'))[1];
+    assert.ok(/due/.test(dueNow) && dueNow !== dueWas, `the outline row's due chip shows the new date on the same commit: ${dueWas} -> ${dueNow}`);
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });
