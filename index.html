@@ -13045,6 +13045,12 @@ function mtSetColWidth(node, colIdx, w) {
 // Pure (#1584): the write alone. False when there was nothing to change (clearing a format that
 // was never set), so the door below can skip the repaint, as it always did.
 function mtWriteColFmt(node, colIdx, f) {
+  if (node.qbase) {   // #1707: a query column keeps its format on itself, so it rides the _qbase JSON
+    const cd = qbaseColList(node.qbase.cols)[colIdx];
+    if (!cd || (f == null && cd.fmt == null)) return false;
+    if (f) cd.fmt = f; else delete cd.fmt;
+    return true;
+  }
   if (!node.colFmt) { if (f == null) return false; node.colFmt = []; }
   node.colFmt[colIdx] = f || null;
   if (node.colFmt.every(x => x == null)) node.colFmt = undefined; // all default → drop it
@@ -13513,7 +13519,7 @@ function mtViewSwitcherHtml(node) {
   // a view it will punt. The click still works (it fires the explaining flashHint). On an authored
   // base a role is a hint the user can override, not a schema (vision §3) — but #922 auto-detects
   // Status/Date columns from the data so the views light up without a manual trip; on a query base
-  // roles are inferred from the projection (B4) since its read-only headers have no Column menu.
+  // roles are inferred from the projection (B4); its Column menu (#1707) has no Show as.
   const roles = mtColRoles(node) || [];
   const ready = { board: roles.includes('status'), calendar: roles.includes('date') };
   const btn = (k, label) => {
@@ -13521,12 +13527,21 @@ function mtViewSwitcherHtml(node) {
     // #1114: the tooltip names its own door. The flash on click already said "(Column menu, Show as)";
     // the dimmed button - the thing a user reads FIRST, and often the only thing they read - did not,
     // which is how a delivery lead with a column headed "Status" concluded he had already done it.
-    const need = k === 'board' ? 'Mark a column as Status to use Board (Column menu, Show as)'
-                               : 'Mark a column as Date to use Calendar (Column menu, Show as)';
+    const need = viewNeedHint(k, node.qbase);
     return `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}${dimmed ? ' mt-view-btn-dim' : ''}"`
       + ` data-view="${k}" aria-pressed="${kind === k}"${dimmed ? ` aria-disabled="true" title="${need}"` : ''}>${label}</button>`;
   };
   return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}${btn('calendar', 'Calendar')}</div>`;
+}
+
+// #1707: what a dimmed Board/Calendar button needs, naming a door this base HAS. A query base's
+// roles come from its projection, so its door is Edit query, never the authored Show as menu; and
+// it can never offer a Status column (a point's state lives in its text, not a property). Pure.
+function viewNeedHint(kind, qbase) {
+  if (!qbase) return kind === 'board' ? 'Mark a column as Status to use Board (Column menu, Show as)'
+                                      : 'Mark a column as Date to use Calendar (Column menu, Show as)';
+  if (kind === 'board') return 'Board needs a Status column, and a query base shows properties, not states. Use Table or Cards here.';
+  return `Show a date column like due to use Calendar (Edit query, ${qbaseListScoped(qbase) ? 'Show as columns' : 'Columns'})`;
 }
 
 // Wire the view-switcher buttons (mousedown + preventDefault per the caret invariant, Enter/Space
@@ -13627,6 +13642,7 @@ function boardBlockReason(headerRow, statusIdx, cells, states, seqs = []) {
 function mtSetView(node, kind) {
   if (kind === 'board') {
     const gi = (mtColRoles(node) || []).findIndex(r => r === 'status');
+    if (gi < 0 && node.qbase) { flashHint(viewNeedHint('board', node.qbase)); return; }
     if (gi < 0) {
       // #1114: say which half is missing rather than repeating an instruction the user believes
       // they followed. The reason is decided by a pure core so it can be pinned per situation.
@@ -13643,7 +13659,7 @@ function mtSetView(node, kind) {
     node.view = { kind: 'cards' };
   } else if (kind === 'calendar') {
     const di = (mtColRoles(node) || []).findIndex(r => r === 'date');
-    if (di < 0) { flashHint('Mark a column as Date first (Column menu, Show as); its dates place the rows on the calendar.'); return; }
+    if (di < 0) { flashHint(node.qbase ? viewNeedHint('calendar', node.qbase) : 'Mark a column as Date first (Column menu, Show as); its dates place the rows on the calendar.'); return; }
     node.view = { kind: 'calendar', dateBy: di };
   } else node.view = undefined;   // absent = table, so untouched bases serialize clean
   markDirty();
@@ -14064,7 +14080,9 @@ function mtWireQBaseSort(host, node) {
       if (e.button !== 0) return;
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, false);
     });
+    b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showQColPanel(node, c, b); });   // #1707
     b.addEventListener('keydown', e => {
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) { e.preventDefault(); e.stopPropagation(); showQColPanel(node, c, b); return; }
       if (e.key.startsWith('Arrow')) { qbaseArrowNav(host, node, e, -1, c); return; }   // #1704
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);
@@ -14330,6 +14348,20 @@ function mtColumnLabel(model, c) {
   const nm = stripMd(String(model.rows?.[0]?.[c] ?? '')).trim();
   return nm || 'Column ' + (c + 1);
 }
+// #1707: a query base's Column menu. Its header click is the sort door, so this opens on right-click,
+// Shift+F10 or the bullet menu's Column options. A formula column gets the pill's number format; every
+// column gets the door that changes which columns show (and so their roles: a due column is a date).
+function showQColPanel(node, c, anchorEl) {
+  const cd = qbaseColList(node.qbase.cols)[c]; if (!cd) return;
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  addSection((cd.name || cd.field).trim());
+  if (cd.field.trim()[0] === '=')
+    addItem('Number format…', { active: cd.fmt != null, onApply: () => requestAnimationFrame(() => openColFmtDialog(node, c)) });
+  addItem('Edit columns…', { onApply: () => requestAnimationFrame(() => editQBase(node)) });
+  mtOpenMenu(panel, anchorEl);
+}
 // The bullet-menu door to per-column ops (#811): list the base's columns; picking
 // one opens its Column menu (Calculate, Formula, Show as, Sort, Alignment, Width,
 // Insert/Move/Delete). The on-widget doors (click around the name pill, the ▾,
@@ -14350,7 +14382,7 @@ function showBaseColumnsMenu(node, anchorEl) {
       // own click tail lands outside the re-anchored panel, so guard this hop too.
       mtGuardPanelDismiss();
       const th = mtHost(node.id)?.querySelector(`th[data-c="${c}"]`);
-      showColPanel(node, c, th || anchorEl);
+      node.qbase ? showQColPanel(node, c, th || anchorEl) : showColPanel(node, c, th || anchorEl);
     }) });
   });
   mtOpenMenu(panel, anchorEl);
@@ -14807,7 +14839,7 @@ function buildTableWidget(node, readOnly) {
       // the roving reset below never takes it out of the Tab order.
       const as = qbaseAriaSort(node.qbase.sort, c);
       h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${as ? ` aria-sort="${as}"` : ''}${colStyle(c)}>`
-         + `<span class="mt-qsort" data-c="${c}" role="button" tabindex="0" title="Sort by this column: ascending, descending, then document order">${mtInline(node, nm)}`
+         + `<span class="mt-qsort" data-c="${c}" role="button" tabindex="0" title="Sort by this column: ascending, descending, then document order. Right-click or Shift+F10 for column options">${mtInline(node, nm)}`
          + `<span class="mt-qsort-ind" aria-hidden="true">${as === 'ascending' ? ' ↑' : as === 'descending' ? ' ↓' : ''}</span></span></th>`;
     } else if (readOnly || ch0) {
       const ce = ch0 ? ' contenteditable="false" tabindex="0" aria-readonly="true"' : '';
@@ -20148,14 +20180,14 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100, scope) {
   const vars = collectVars(rootNode);   // '=' columns need it regardless of the query
   const needsLinks = terms.some(tm => (tm.kind === 'is' && (tm.value === 'broken' || tm.value === 'orphan')) || (tm.kind === 'has' && tm.value === 'backlink'));
   const links = needsLinks ? collectLinks(rootNode) : undefined;
-  const project = (n, field) => {
+  const project = (n, field, fmt) => {
     const f = field.trim();
     if (f === 'title') return `[[#${n.id}]]`;
     if (f[0] === '=') {
       const src = f.slice(1).trim();
       const scope = Object.assign(Object.create(null), vars, nodePropVars(n));   // dates join as epoch-days (#1657)
       const v = evalMath(expandAggExpr(src, n), scope);
-      return v === null ? '#ERR' : formatMathDisplay(v, src, rollupFmt(n, src, null));
+      return v === null ? '#ERR' : formatMathDisplay(v, src, rollupFmt(n, src, fmt || null));   // #1707: the column's own format wins, as a pill's does
     }
     const key = f.toLowerCase();
     const p = (n.props || []).find(x => (x.key || '').trim().toLowerCase() === key);
@@ -20167,7 +20199,7 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100, scope) {
   const visit = (c, anc) => {
     if (c.id !== hostId && (!terms.length || queryMatchesNode(terms, c, seqs, vars, links, anc))) {
       total++;
-      if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field)) });
+      if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field, col.fmt)) });
     }
   };
   if (siblings) (function find(node, anc) {
@@ -24477,9 +24509,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     });
     // #811: per-column ops from the bullet menu too. The header's own doors need a
     // pointer on the header; this one rides the menu every input method can open
-    // (touch long-press on the bullet included). Authored bases only: a query
-    // base's projected headers are read-only and have no Column menu.
-    if (!node.qbase) actions.push({
+    // (touch long-press on the bullet included). #1707: a query base too (showQColPanel).
+    actions.push({
       sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-cells', fb:'▥' },
       label: 'Column options',
       fn: () => { hideBpop(); showBaseColumnsMenu(node, bulletEl); },
@@ -33662,6 +33693,15 @@ function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: tit
   });
 }
 
+// #1707: the columns textarea has no format syntax, so a Save re-parses columns without one. Carry
+// each column's format over by field (a rename or a move keeps it; a new column starts plain). Pure.
+function qbaseCarryFmt(oldCols, cols) {
+  const norm = f => String(f || '').replace(/\s+/g, ' ').trim();
+  return cols.map(cd => {
+    const was = (oldCols || []).find(o => o && o.fmt && norm(o.field) === norm(cd.field));
+    return was ? { ...cd, fmt: was.fmt } : cd;
+  });
+}
 function editQBase(node) {
   if (!node?.qbase) return;
   const cur = node.qbase.sort;
@@ -33674,7 +33714,7 @@ function editQBase(node) {
     scope: node.qbase.scope || '',
     pickKeys: node.qbase.scope === 'siblings' ? listColumnKeys(parentOf(node.id)?.children, knownStates(root)) : [],
     onResult: (expr, cols, sort, scope) => {
-      const next = { expr, cols,
+      const next = { expr, cols: qbaseCarryFmt(node.qbase.cols, cols),
         ...(node.qbase.showAll ? { showAll: true } : {}),
         ...(sort ? { sort } : {}),
         ...(scope ? { scope } : {}) };
@@ -33946,7 +33986,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
 // column, so a Number column can read as money/measure/percent. onSubmit routes through
 // parseNumFmt → mtSetColFmt (drop-when-all-null); a live preview shows a sample number.
 function openColFmtDialog(node, colIdx) {
-  const cur = node.colFmt?.[colIdx] || null;
+  const cur = (node.qbase ? qbaseColList(node.qbase.cols)[colIdx]?.fmt : node.colFmt?.[colIdx]) || null;
   openInsertDialog({
     icon: { fa:'fa-solid fa-hashtag', fb:'#' },
     title: 'Number format',
@@ -45774,7 +45814,7 @@ const GUIDE = [
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
-    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. Click a column's header to sort by it: once for ascending, again for descending, a third time for document order (Enter on a focused header does the same). A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
+    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. Click a column's header to sort by it: once for ascending, again for descending, a third time for document order (Enter on a focused header does the same). Right-click a header, or press Shift+F10 on it, for its Column menu: a formula column takes a Number format there, so it can round to a set number of places or read as hours and minutes, and Edit columns opens the same editor as the strip. A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
     related:['query','base-views','tables','bases-overview','list-table-view'],
     examples:[
       { syn:'/querybase',            desc:'create one from the / menu' },

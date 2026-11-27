@@ -9922,6 +9922,49 @@ test('#1704 a list table view: arrows and Shift+Tab keep focus in the grid, and 
   } finally { await pg.close(); }
 });
 
+// #1707: a query base had no Column menu, so a formula column could not be rounded or shown as h:mm,
+// and the dimmed Calendar sent the user to a menu that was not there. Driven: Shift+F10 and right-click
+// on a header open the menu, Number format applies, and Edit query's Save keeps the format.
+test('#1707 a table view column has a Column menu: Number format rounds a formula column, and Calendar names its door', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>S</title></head><body>'
+      + '<outline text="## Station 4"><outline text="A {prop hours: 38:30}"/><outline text="B {prop hours: 41:20}"/></outline></body></opml>'));
+      render(); const l = root.children[0]; createListTableView(l, listTableSpec(l, knownStates(root)).cols);
+      const qb = l.children[0].qbase; qb.cols.push({ name: 'Short', field: '= 36 - hours' }); markDirty(); render(); });
+    await pg.waitForTimeout(400);
+    const c = await pg.evaluate(() => String(root.children[0].children[0].qbase.cols.length - 1));
+    const col = () => pg.evaluate(c => [...document.querySelectorAll(`.md-table-host tr[data-nid] td.mt-cell[data-c="${c}"]`)].map(td => td.innerText.trim()), c);
+    const items = () => pg.evaluate(() => getComputedStyle(document.getElementById('mt-colpanel')).display === 'none' ? []
+      : [...document.querySelectorAll('#mt-colpanel .mt-col-item .mt-col-item-label')].map(x => x.textContent.trim()));
+    assert.deepEqual(await col(), ['-2.5', '-5.3333333'], 'the bare result before');
+    assert.match(await pg.locator('.mt-view-btn[data-view="calendar"]').getAttribute('title'), /^Show a date column like due to use Calendar \(Edit query, Show as columns\)$/,
+      'the dimmed Calendar names the door a table view has');
+
+    await pg.locator(`.mt-qsort[data-c="${c}"]`).focus();
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(200);
+    assert.deepEqual(await items(), ['Number format…', 'Edit columns…'], 'Shift+F10 on a formula header opens its Column menu');
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
+    await pg.locator('.mt-qsort[data-c="0"]').click({ button: 'right' }); await pg.waitForTimeout(200);
+    assert.deepEqual(await items(), ['Edit columns…'], 'right-click opens it too; a title column has no number format');
+    assert.equal(await pg.evaluate(() => root.children[0].children[0].qbase.sort), undefined, 'and a right-click does not sort');
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
+
+    await pg.locator(`.mt-qsort[data-c="${c}"]`).click({ button: 'right' }); await pg.waitForTimeout(200);
+    await pg.locator('#mt-colpanel .mt-col-item').filter({ hasText: 'Number format' }).click(); await pg.waitForTimeout(300);
+    await pg.locator('#io-fld-decimals').fill('1');
+    await pg.locator('#io-card').getByRole('button', { name: 'Apply', exact: true }).click(); await pg.waitForTimeout(400);
+    assert.deepEqual(await col(), ['-2.5', '-5.3'], 'Decimal places rounds the column');
+
+    await pg.evaluate(() => editQBase(root.children[0].children[0])); await pg.waitForTimeout(300);
+    await pg.locator('#io-card').getByRole('button', { name: 'Save', exact: true }).click(); await pg.waitForTimeout(400);
+    assert.deepEqual(await col(), ['-2.5', '-5.3'], 'an Edit query Save keeps the format');
+    const opml = await pg.evaluate(() => toOpml(root));
+    assert.match(opml, /&quot;fmt&quot;:\{&quot;decimals&quot;:1\}/, 'and it rides the _qbase attribute on save');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
 // #1691: a header sort and an editor Save (where the column ticks land) recorded no undo step, so
 // Ctrl+Z after either undid the step BEFORE it. On a table just made with + Table view, that was the
 // table itself: driven on main, Ctrl+Z after a header sort deleted the whole table.

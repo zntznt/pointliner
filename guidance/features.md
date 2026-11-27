@@ -688,6 +688,11 @@ Implemented:
   `retitleText`, Name cell), adds (`qbaseAddRow`, the `+ Add` builder through `createPromotedRow`,
   which now pushes undo) and moves (`qbaseMoveRow` over `listMoveIndices`, refused when sorted by
   `qbaseMoveBlock`) its list's points; doors in `mtWireQBaseRows` / `showQRowPanel`.
+  **#1707**: a query base's Column menu, `showQColPanel` (header right-click / Shift+F10, and the
+  bullet menu's Column options): a `= formula` column takes the pill's Number format, stored as
+  `cols[i].fmt` inside `_qbase` (`mtWriteColFmt` branches on `node.qbase`; `qbaseCarryFmt` keeps it
+  across an Edit query Save). The dimmed Board/Calendar copy comes from `viewNeedHint`, which names
+  Edit query on a query base.
   **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);
