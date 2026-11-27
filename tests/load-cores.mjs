@@ -185,7 +185,7 @@ export function loadCores() {
     'estNumFmt','distHeadline',   // #1115: the estimate number, and the shared mean (p5 – p95) line
     'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
-    'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
+    'evalMath', 'formatMathResult', 'noiseSnap', 'snappedSum', 'formatCellValue', 'formatEpochDays', 'makeMathResult',
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'condAttempt', 'condAttemptReason', 'condEmptyMessage', 'strCondVerdict',
@@ -214,8 +214,8 @@ export function loadCores() {
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
-    'importCellValue', 'importKeyName', 'importSplitRow', 'sniffDelimited', 'tableToPoints',   // #1296: spreadsheet paste → props
-    'csvCell', 'rowsToCsv', 'sectionToCsvRows',   // #1310: CSV export (the OUT mirror; inverse of importSplitRow)
+    'importCellValue', 'importKeyName', 'importSplitRow', 'importSplitRows', 'sniffDelimited', 'tableToPoints',   // #1296: spreadsheet paste → props
+    'csvCell', 'rowsToCsv', 'sectionToCsvRows', 'propFormulaValue',   // #1310: CSV export (the OUT mirror; inverse of importSplitRow)
     'markdownVaultToPoints', 'resolveWikilinks',   // #1265 PR 2: multi-file vault import + wikilink resolution
     'builderPaneKind',   // UXP-336: what a builder row's pane shows, and so what applying it does
     'recipeToNodes', 'recipeSelRange',   // #1267: snippet/pattern palette (PATTERN_RECIPES data is parsed from _src in the pins); where a recipe's first value sits
@@ -342,7 +342,7 @@ export function loadCores() {
     'textBlockPrefix','unfoldTokensIn','artifactTokenRe','normStateKey','boardBlockReason','statusColWarning','baseStructMessage','colWidthLabel','mtColValueCount','mtRowValueCount','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal (#1401: and its now-shared unknown-values half), the slash pool
     'baseRefocusSelector',   // #1383: where focus goes back to after a base rebuild
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
-    'pruneNoexport','exportExclusionImpact',
+    'pruneNoexport','exportExclusionImpact','noexportIds',
     'searchScopeSay','searchEmptySay',          // #1509: what a search says when the view is zoomed
     'filterResultSay',                          // #1510: what a filter says when it changes the list
     'chipTemplateSpan','chipTemplateSay','chipAriaLabel','chipTemplateLabels',   // #1513: a legend chip whose label carries a placeholder is a template, not a query
