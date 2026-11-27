@@ -39542,6 +39542,21 @@ test('#1387 census: no writer to a base model escapes undo by omission', () => {
   }
 });
 
+// #1691: the table header sort and the query editor's Save (where the column ticks land) recorded no
+// undo, so Ctrl+Z reached PAST them. On a table just made with + Table view that deleted the table.
+// Driven in tests/browser.mjs ("#1691 one Ctrl+Z"); these pin the call and its place.
+test('#1691 a header sort and a query-editor Save each record undo', () => {
+  const sort = fnBody(_src, 'qbaseSortByHeader');
+  const iSortUndo = sort.indexOf('pushUndo();');
+  assert.ok(iSortUndo > -1 && iSortUndo < sort.indexOf('node.qbase.sort = next'),
+    'the header sort records undo BEFORE it writes the sort');
+  const save = between(fnBody(_src, 'editQBase'), 'onResult:', 'refreshTable(node)');
+  const iSame = save.indexOf('JSON.stringify(next) === JSON.stringify(node.qbase)) return;');
+  const iUndo = save.indexOf('pushUndo();'), iWrite = save.indexOf('node.qbase = next;');
+  assert.ok(iSame > -1 && iSame < iUndo, 'an unchanged Save returns first, so it pushes no phantom step');
+  assert.ok(iUndo > -1 && iUndo < iWrite, 'a real Save records undo BEFORE it replaces the config');
+});
+
 // ─── #1389: an unrecognised repeat phrase crashed the renderer ────────────────
 // Found while seeding a harness for something else — the seed used `repeat: week`, which is not a
 // phrase parseRepeat accepts, and the app threw inside render().
@@ -41144,7 +41159,7 @@ test('table view: editQBase preserves every qbase config field (census)', () => 
   assert.ok(fields.has('scope'), 'the census sees the scope field');
   // Identity, not substring: the field must be written back as a KEY of the rebuilt config
   // (`{ showAll: true }`, `{ sort }`, `{ scope }`). A bare includes('sort') matches `sortText`.
-  const rebuilt = between(fnBody(_src, 'editQBase'), 'node.qbase = {', 'markDirty');
+  const rebuilt = between(fnBody(_src, 'editQBase'), 'const next = {', 'markDirty');
   for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
 });
 

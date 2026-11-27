@@ -9772,6 +9772,37 @@ test('table view slice 4: the keyboard renames, moves and adds points, and undo 
   } finally { await pg.close(); }
 });
 
+// #1691: a header sort and an editor Save (where the column ticks land) recorded no undo step, so
+// Ctrl+Z after either undid the step BEFORE it. On a table just made with + Table view, that was the
+// table itself: driven on main, Ctrl+Z after a header sort deleted the whole table.
+test('#1691 one Ctrl+Z reverses a header sort and an editor Save, and the table stays', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await slice4Table(pg);
+    const st = () => pg.evaluate(() => { const b = root.children[0].children[0];
+      return { table: !!b?.qbase, sort: b?.qbase?.sort || null, cols: b?.qbase?.cols.map(c => c.field).join(',') }; });
+    const before = await st();
+    assert.deepEqual([before.table, before.sort], [true, null], 'the fixture: a table view, unsorted');
+
+    await pg.locator('.mt-qsort[data-c="1"]').click(); await pg.waitForTimeout(300);
+    assert.deepEqual((await st()).sort, { col: 1, dir: 'asc' }, 'precondition: the press sorted');
+    await pg.evaluate(() => document.activeElement?.blur());
+    await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400);
+    assert.deepEqual(await st(), before, 'one undo reverts the sort and leaves the table in place');
+
+    // The editor: untick a column and Save, then undo.
+    await pg.evaluate(() => editQBase(root.children[0].children[0])); await pg.waitForTimeout(300);
+    await pg.locator('#io-card').getByRole('checkbox', { name: 'beds', exact: true }).uncheck();
+    await pg.locator('#io-card').getByRole('button', { name: 'Save', exact: true }).click();
+    await pg.waitForTimeout(400);
+    assert.equal((await st()).cols, 'title', 'precondition: Save dropped the unticked column');
+    await pg.evaluate(() => document.activeElement?.blur());
+    await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400);
+    assert.deepEqual(await st(), before, 'one undo reverts the Save and leaves the table in place');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
 test('table view slice 4: the row handle and Shift+F10 open the same row menu', { skip: skip() }, async () => {
   const pg = await fresh();
   try {
