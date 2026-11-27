@@ -102,6 +102,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | User research, "various walks of life" laptop panel (bounce, propagation-is-the-click) | `guidance/user-research-2026-07-c.md` | Candidate |
 | User research, third fleet (laptop; hospitality, language services, domestic work) | `guidance/user-research-2026-07-fleet3.md` | Candidate |
 | User research, driven panel #8 (beekeeper, bike shop, stage manager, surveyor, quiz host, trucker) | `guidance/user-research-2026-11-panel8.md` | Candidate |
+| User research, driven panel #9 (groomer, wedding DJ, debate coach, DIY remodel, fire training officer, piano teacher) | `guidance/user-research-2026-11-panel9.md` | Candidate |
 | Independent engineering evaluation (scorecard, confirmed defects, top 3 changes) | `guidance/engineering-evaluation-2026-11.md` | Reference |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
 | Variable-kind unification, measured plan (#1353) | `guidance/variable-kind-unification-plan.md` | Shipped |
