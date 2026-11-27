@@ -86,6 +86,7 @@ console.log('\n— MCP door (#1130 false negative: this was entirely unguarded) 
   ['update: missing statement', 'mcp__github__update_pull_request', { pullNumber: 1, body: bad },  BLOCK],
   ['update: title only',        'mcp__github__update_pull_request', { pullNumber: 1, title: 'y' }, ALLOW],
   ['update: valid',             'mcp__github__update_pull_request', { pullNumber: 1, body: good }, ALLOW],
+  ['plugin-scoped create: missing statement', 'mcp__plugin_github_github__create_pull_request', { title: 'x', body: bad }, BLOCK],
   ['an unrelated MCP tool',     'mcp__github__list_issues',         { owner: 'o', repo: 'r' },     ALLOW],
   ['reading a PR is not writing','mcp__github__pull_request_read',  { pullNumber: 1 },             ALLOW],
 ].forEach(([d, t, i, e]) => check(d, mcp(t, i), e));
@@ -100,7 +101,8 @@ console.log('\n— registration: the hook must actually be WIRED to both doors �
   const wired = pre.filter(e => (e.hooks ?? []).some(h => String(h.command ?? '').includes('check-pr-conformance.mjs')));
   check('at least two matchers reference the hook', wired.length >= 2 ? 0 : -1, 0);
   const matchers = wired.map(e => String(e.matcher ?? ''));
-  for (const tool of ['Bash', 'mcp__github__create_pull_request', 'mcp__github__update_pull_request']) {
+  for (const tool of ['Bash', 'mcp__github__create_pull_request', 'mcp__github__update_pull_request',
+    'mcp__plugin_github_github__create_pull_request', 'mcp__plugin_github_github__update_pull_request']) {
     const hit = matchers.some(m => { try { return new RegExp(`^(${m})$`).test(tool); } catch { return false; } });
     check(`${tool} is covered by a registered matcher`, hit ? 0 : -1, 0);
   }

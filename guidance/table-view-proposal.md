@@ -1,7 +1,7 @@
 # Table view of a list: proposal
 
-**Status: slice 1 SHIPPED (2026-11-26); slices 2 and 3 within doctrine; slice 4 owner-approved
-(2026-11-26) and SHIPPED.** Read alongside `bases-direction.md` (binding), `base-views-vision.md` §0 and §3b,
+**Status: slices 1, 2 and 3 SHIPPED (2026-11-26); slice 4 owner-approved (2026-11-26) and
+SHIPPED.** Read alongside `bases-direction.md` (binding), `base-views-vision.md` §0 and §3b,
 `query-base-proposal.md`, `saved-views-proposal.md` (§0.6, the saved-views line is drawn by kind),
 `ux-discipline.md` (P5, the UXP-20 syntax guard) and issue #866 (the substrate test).
 
@@ -129,7 +129,7 @@ would keep pointing at the original.
 
 **Verdict: within doctrine, no owner call needed.**
 
-### Slice 2: sort by clicking a query base's column header (not built)
+### Slice 2: sort by clicking a query base's column header (SHIPPED)
 
 **What.** A query base's read-only headers render no Column menu, so sorting means typing
 `beds desc` in the editor. Clicking (and Enter on) a header would cycle ascending, descending,
@@ -142,7 +142,22 @@ needs a sort state announced (`aria-sort`).
 
 **Verdict: within doctrine, no owner call needed.**
 
-### Slice 3: choose columns by ticking, not by typing lines (not built)
+**Shipped.** Every query base header (a list's table view and a document-wide one alike) is a sort
+door: a pointer press acts on mousedown + preventDefault, so the caret stays where it was; Enter or
+Space on the focused header does the same and keeps focus on that header across the rebuild, so the
+cycle can be pressed through. The `<th>` of the sorted column carries `aria-sort` (only that one, per
+WAI-ARIA) and shows an arrow; the strip's `by beds ↑` and the editor's Sort rows field read the same
+config, so the three can never disagree. Each press is announced with SV-1's reading copy ("Sorted by
+beds, smallest number first. Press again to reverse."), so both sort doors describe a column the
+same way.
+
+*Pure cores:* `qbaseNextSort` (the cycle) and `qbaseAriaSort` (the state). *Census:* an authored
+base's header already has its own door (the Column menu, whose Sort rows section is SV-1's one-shot
+data sort); a query base had none, because that menu's operations write `node.text`. So nothing was
+twinned: the query base gets the config door SV-2 already defined, and the authored header is
+unchanged. Board, Cards and Calendar have no column headers and need no door.
+
+### Slice 3: choose columns by ticking, not by typing lines (SHIPPED)
 
 **What.** The query editor's columns field is a textarea mini-language (`Name: field`, one per
 line). For a list-scoped base, offer the list's property keys as checkboxes (from `inferRowShape`
@@ -152,6 +167,17 @@ plus any sparse key `dataPropKeys` sees), with the textarea kept for formulas.
 no new syntax (P5). Formula columns stay text, which is where the math grammar already lives.
 
 **Verdict: within doctrine, no owner call needed.**
+
+**Shipped.** On a list-scoped base the query editor shows **Show as columns**, one checkbox per key
+`listColumnKeys` finds (the row shape's columns in order, then any key a single row carries; never
+`created`/`edited`/`check`). Ticking appends a bare `key` line to the columns textarea and unticking
+drops every line projecting that key (`qbaseColsToggle`); every other line keeps its exact text. A box
+is ticked exactly when the text projects its key (`qbaseColsHave`, the grid's own trimmed,
+case-insensitive match), and typing in the textarea re-ticks the boxes, so there is one store and the
+two views of it cannot disagree. The group is a `fieldset`/`legend` (`checks` field type in
+`openInsertDialog`), keyboard-native (Tab, Space, Enter saves) and wraps at 320px. Sibling census:
+authored bases choose columns in the grid's Column menu and no checkbox door existed on either kind,
+so the new field type is the dialog's existing checkbox recipe grouped, not a twin.
 
 ### Slice 4: add, reorder and rename points from the table (SHIPPED)
 

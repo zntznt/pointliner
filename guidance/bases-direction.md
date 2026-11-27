@@ -125,6 +125,8 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   and every query base's Board/Cards/Calendar, stay as they were. A sorted table refuses moves and
   says to clear the sort. One undo per write, a stale-row check, an announced commit. Deleting rows
   stays out (deleting a point is the outline's job). Detail: `table-view-proposal.md` slice 4.
+  Slice 3 (2026-11-26) adds a column picker to that base's query editor: checkboxes over the
+  list's property keys that rewrite the same columns text (same spec, same storage; no new syntax).
 
   **Per-column number format shipped (ε, 2026-07-24).** A Number column can format as
   money/measure/percent, not only group thousands: `node.colFmt` (OPML `_colfmt`) holds a
@@ -322,7 +324,7 @@ row as **dotted document variables**: row "Orc" + column "HP" → `orc.hp`, read
 An optional base name namespaces every projection (`monsters.orc.hp` — the prefix replaces the bare form).
 
 - **Projection** is the pure `varBaseDefs(node)` (memoized per generation — `varBaseDefsMemo`, the
-  `_varMapAtCache` self-invalidating precedent), consumed at TWO gather hooks: `collectVars`'s walk and
+  `_posVarMapCache` self-invalidating precedent), consumed at TWO gather hooks: `collectVars`'s walk and
   `collectNodeDecls` (which covers both positional walks — `varMapAt` and `renderPosVarMaps`). A variable
   base is therefore a **declaration site at its document position**: nearest-above wins, last-wins on
   name collisions, exactly like `{name := …}` declarations.

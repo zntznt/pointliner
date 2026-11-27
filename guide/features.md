@@ -240,7 +240,8 @@ Turn the document into a lightweight planner.
 - **See a list as a table.** A list whose points share properties (crops with beds and yield) gets a
   **+ Table view** door: one click shows exactly that list as a table at its top, a row per point and
   a column per property, with no search or column syntax to write. Edit a number in it and the point
-  changes; sort it from the strip. Also in the menu of the list's heading or any of its points.
+  changes; click a column header to sort by it, and tick the properties you want as columns from
+  the strip. Also in the menu of the list's heading or any of its points.
   The table renames, adds and reorders the list's points too (type a name, Tab past the last cell,
   Alt+Up/Down), each one Undo step.
   ([a list as a table](getting-around.md#see-a-list-as-a-table))

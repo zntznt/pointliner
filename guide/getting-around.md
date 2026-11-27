@@ -274,8 +274,10 @@ Type `/` and choose **Query base** (or `/querybase`), then give it a search and 
 grid shows the search and the live match count; click it (or press `Enter` on it) to change the
 query, columns or sort.
 
-The optional **Sort rows** field orders the results by any column, formula columns included ("Due
-desc", "cost"); the strip names an active sort, and blank keeps document order. A broad query is
+To sort, click a column's header (or press `Enter` on it): once sorts ascending, again descending,
+and a third time returns to document order. The sorted header shows an arrow, and the strip names the
+sort. The optional **Sort rows** field in the editor sets the same sort by typing, formula columns
+included ("Due desc", "cost"); blank keeps document order. A broad query is
 capped at 100 rows so it cannot freeze the page; when the cap bites, the strip shows **100 of N** and
 a **Show all** button lifts it (the choice is remembered, and the same button caps it again).
 
@@ -300,7 +302,7 @@ a **+ Table view** door appears at the end of the list, beside **+ Add** and **+
 column per property, and its strip reads **Points in Crops** instead of a search.
 
 It is a query base that reads only the points beside it, so everything above applies: property cells
-write back to their points, the strip's **Sort rows** orders it, Board, Cards and Calendar work, and
+write back to their points, a click on a column header sorts it, Board, Cards and Calendar work, and
 Undo removes it. A search typed into its strip narrows the rows within the list (`beds:>2`); untick
 **Only the points in this list** and give a search to widen it to the whole document. The table
 follows its list: duplicate or move the section and the copy shows its own points.
@@ -318,6 +320,11 @@ Because its rows are the list's own points, this table also grows, reorders and 
 A query base with a search (not a list) still edits property cells only.
 
 The title column stays a link (click it to jump to the point) and formula columns stay computed.
+
+To choose which properties show, click the strip and tick or untick them under **Show as columns**.
+Every property any point in the list carries is offered, even one only a single point has (a `note`
+on one crop). Ticking adds the column's line to **Columns** below and unticking removes it, so the
+two always agree; a formula column such as `Cost: = sum(cost)` is still typed there.
 
 ## Searching all your documents
 

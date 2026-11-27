@@ -14,9 +14,7 @@
     "",
     "kills = a substring of the failing test's name. file/find/replace = one exact, UNIQUE edit; the",
     "runner refuses to proceed if `find` does not match exactly once, because a find string that has",
-    "drifted would apply nothing and the mutant would 'survive' for a reason unrelated to the guard.",
-    "suite:'browser' entries are recorded but not run by default -- a driven run costs ~80s against",
-    "~5s for the unit suite. The runner prints what it skipped rather than skipping silently."
+    "drifted would apply nothing and the mutant would 'survive' for a reason unrelated to the guard."
   ],
   "mutants": [
     {
@@ -83,15 +81,6 @@
       "kills": "#1451 the meter failure names BOTH doors"
     },
     {
-      "id": "control-anchor-renamed",
-      "suite": "browser",
-      "why": "renaming a control the guide points at; caught `includes` matching Footnotes for Notes",
-      "file": "index.html",
-      "find": "title=\"Notes\" aria-label=\"Notes\"",
-      "replace": "title=\"Annotations\" aria-label=\"Annotations\"",
-      "kills": "every control the guide points at is on screen under the name the guide uses"
-    },
-    {
       "id": "block-prefix-from-type",
       "suite": "unit",
       "why": "#1463: reading the old block prefix off node.type, which the / trigger invalidates",
@@ -101,69 +90,6 @@
       "kills": "#1463 the block applier reads the text and parks the caret past the marker"
     },
     {
-      "id": "block-caret-not-parked",
-      "suite": "browser",
-      "why": "#1463: the caret left at offset 1 inside the marker, so the next keystroke shreds it",
-      "file": "index.html",
-      "find": "    if (!opts.display) requestAnimationFrame(() => focusNodeAtOffset(nodeId, addedTodo));   // see the block arm",
-      "replace": "    if (false) focusNodeAtOffset(nodeId, addedTodo);",
-      "kills": "#1463 a / block command replaces the marker and leaves the caret past it"
-    },
-    {
-      "id": "builder-cancel-loses-focus",
-      "suite": "browser",
-      "why": "#1464: dismissing a nested dialog dropped focus behind the still-open modal, with no keyboard exit",
-      "file": "index.html",
-      "find": "      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };   // #1464: focus returns with the pane",
-      "replace": "      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };",
-      "kills": "#1464 Escape from a command form returns to the builder, not behind it"
-    },
-    {
-      "id": "agenda-focus-not-moved",
-      "suite": "browser",
-      "why": "#1464: leaving focus on the toolbar button made Escape a no-op on the agenda alone",
-      "file": "index.html",
-      "find": "    if (first && strip.classList.contains('on')) first.focus();",
-      "replace": "    if (false) first.focus();",
-      "kills": "#1464 Escape closes the agenda the way it closes the graph and the timeline"
-    },
-    {
-      "id": "selbar-focus-not-claimed",
-      "suite": "browser",
-      "why": "#1465: without the focus claim the bar's 13 actions have no keyboard door at all",
-      "file": "index.html",
-      "find": "      bar.querySelector('button')?.focus();",
-      "replace": "      if (false) bar.querySelector('button')?.focus();",
-      "kills": "#1465 the selection bar is reachable, announced, and does not steal Tab"
-    },
-    {
-      "id": "selbar-silent",
-      "suite": "browser",
-      "why": "#1465: the selection was made, extended and cleared with a11y-live empty throughout",
-      "file": "index.html",
-      "find": "    announce(`${selectedIds.size} points selected`);",
-      "replace": "    ;",
-      "kills": "#1465 the selection bar is reachable, announced, and does not steal Tab"
-    },
-    {
-      "id": "cell-token-leak",
-      "suite": "browser",
-      "why": "#1467: the cell editor filled itself from raw model text, showing [[dice:key]] to the user",
-      "file": "index.html",
-      "find": "    cell.textContent = unfoldTokensIn(_cellRawTok, node);",
-      "replace": "    cell.textContent = _cellRawTok;",
-      "kills": "#1467 a base cell shows {2d6} on entry and keeps its frozen roll when untouched"
-    },
-    {
-      "id": "cell-untouched-rerolls",
-      "suite": "browser",
-      "why": "#1467: without the token writeback, clicking through a cell re-promotes and silently re-rolls",
-      "file": "index.html",
-      "find": "    if (_tok !== undefined && raw === enteredWith) raw = _tok;",
-      "replace": "    ;",
-      "kills": "#1467 a base cell shows {2d6} on entry and keeps its frozen roll when untouched"
-    },
-    {
       "id": "token-pattern-forked",
       "suite": "unit",
       "why": "#1467: a second copy of the token regex drifts the day a new artifact type is added",
@@ -171,15 +97,6 @@
       "find": "  const TOKEN_RE = artifactTokenRe();",
       "replace": "  const TOKEN_RE = /\\[\\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\\]\\]/gi;",
       "kills": "#1467 the token pattern has ONE home, and both unfolders use it"
-    },
-    {
-      "id": "cell-focus-not-reasserted",
-      "suite": "browser",
-      "why": "#1468: a rebuild during focusout replaces the cell mtFocusCell just focused, dropping focus to body",
-      "file": "index.html",
-      "find": "    if (!again || again === document.activeElement) return;",
-      "replace": "    if (true) return;",
-      "kills": "#1468 arrowing inside a base lands in the cell above and keeps what you type"
     },
     {
       "id": "sort-blind-to-numbers",
@@ -252,15 +169,6 @@
       "find": "      announce(mtr.getAttribute('aria-label') || mtr.getAttribute('title') || 'Meter');",
       "replace": "      ;",
       "kills": "#1470 every keyboard twin inside a point is an atomic island"
-    },
-    {
-      "id": "inline-ctl-island-half-dropped",
-      "suite": "browser",
-      "why": "#1470: the whole family losing the island half at once -- the state the app shipped in",
-      "file": "index.html",
-      "find": "const INLINE_CTL = 'contenteditable=\"false\" tabindex=\"-1\"';",
-      "replace": "const INLINE_CTL = 'tabindex=\"-1\"';",
-      "kills": "#1470 Enter on a cold footnote marker writes the footnote, not the point"
     },
     {
       "id": "task-shortcut-unwired",
@@ -380,15 +288,6 @@
       "kills": "#1475 effectiveAlign is the one answer"
     },
     {
-      "id": "align-no-way-back",
-      "suite": "browser",
-      "why": "#1475: the automatic row gone, so an explicit Left is a one-way door",
-      "file": "index.html",
-      "find": "  addItem(`Automatic (${effectiveAlign(null, curRole)})`,\n    { active: curAlign == null, onApply: () => mtSetAlign(node, colIdx, null) });",
-      "replace": "  ;",
-      "kills": "#1475 the Alignment tick says what the cells are doing"
-    },
-    {
       "id": "builder-empty-silent",
       "suite": "unit",
       "why": "#1474: the shipped state, where the live region kept naming a command no longer listed",
@@ -416,15 +315,6 @@
       "kills": "#1660 a builder command is named once"
     },
     {
-      "id": "builder-cmd-stutters-driven",
-      "suite": "browser",
-      "why": "#1660: the stutter as a screen-reader user hears it",
-      "file": "index.html",
-      "find": "        if (msg !== _builderLastSaid) announce(msg);",
-      "replace": "        announce(msg);",
-      "kills": "#1660 typing an argument does not re-announce"
-    },
-    {
       "id": "builder-cmd-latch-survives-empty",
       "suite": "unit",
       "why": "#1660: without the unlatch, recovering onto the same command is silent",
@@ -432,15 +322,6 @@
       "find": "        _builderLastSaid = null;   // #1660: recovery names the command again, even the same one",
       "replace": "        ;",
       "kills": "#1660 a builder command is named once"
-    },
-    {
-      "id": "lean-tip-stutters",
-      "suite": "browser",
-      "why": "#1660: the Lean tip re-read its match under every letter",
-      "file": "index.html",
-      "find": "  if (msg !== _leanSlashSaid) announce(msg);",
-      "replace": "  announce(msg);",
-      "kills": "#1660 typing an argument does not re-announce"
     },
     {
       "id": "builder-empty-message-forked",
@@ -488,15 +369,6 @@
       "kills": "#1473 the two anonymous panels are named"
     },
     {
-      "id": "panel-name-not-in-tree",
-      "suite": "browser",
-      "why": "#1473: the attribute present but pointing at nothing, which reads as anonymous again",
-      "file": "index.html",
-      "find": "<div id=\"bl-panel\" role=\"region\" aria-labelledby=\"bl-panel-hd\">   <!-- #1473: see #fn-panel -->",
-      "replace": "<div id=\"bl-panel\" role=\"region\" aria-labelledby=\"nope\">",
-      "kills": "#1473 the docked strips are named, and say so when they appear"
-    },
-    {
       "id": "label-loses-to-id-prefix",
       "suite": "unit",
       "why": "#1472: the shipped ranking, where `Variable` selected `Variables panel` and Enter opened it",
@@ -513,24 +385,6 @@
       "find": "  (vis || []).forEach((c, i) => { const r = rank(c); if (r < bestRank) { bestRank = r; best = i; } });",
       "replace": "  ;",
       "kills": "#1472 census: every command in every pool is selected by its own name"
-    },
-    {
-      "id": "task-shortcut-refuses-plain",
-      "suite": "browser",
-      "why": "#1471: the reported bug -- the core refusing to add a marker, so the key stays inert",
-      "file": "index.html",
-      "find": "      const ind = lines[i].match(/^\\s*/)[0];",
-      "replace": "      if (true) return { text: String(text ?? ''), action: 'none', delta: 0 };\n      const ind = lines[i].match(/^\\s*/)[0];",
-      "kills": "#1471 Ctrl+Shift+X makes a to-do, ticks it, and says so every time"
-    },
-    {
-      "id": "sort-item-title-dropped",
-      "suite": "browser",
-      "why": "#1469: the per-item description present in source but never reaching the element",
-      "file": "index.html",
-      "find": "    if (title) { item.title = title; item.setAttribute('aria-description', title); }",
-      "replace": "    if (false) { item.title = title; }",
-      "kills": "#1469 Sort and Calculate give the same column the same answer"
     },
     {
       "id": "f6-ring-drops-the-outline",
@@ -605,20 +459,11 @@
       "kills": "the ring covers the whole family"
     },
     {
-      "id": "f6-variables-panel-strands-focus",
-      "suite": "browser",
-      "why": "the variables panel is about the document, not a point, so it has no subject to fall back to: drop the armed-caret restore and F6 out of it leaves focus stuck in the panel",
-      "file": "index.html",
-      "find": "  if (restoreChromeReturn()) return true;\n  const sid = panelSubjectId(fromId);",
-      "replace": "  const sid = panelSubjectId(fromId);",
-      "kills": "every docked panel is reachable"
-    },
-    {
       "id": "ci-job-unbounded",
       "suite": "unit",
       "why": "a CI job with no timeout wedges for six hours and reports in_progress the whole time, which reads exactly like a slow suite",
       "file": ".github/workflows/tests.yml",
-      "find": "    timeout-minutes: 25   # measured ~2min for the whole registry, narrowed",
+      "find": "    timeout-minutes: 25",
       "replace": "    # timeout-minutes: 25 (removed)",
       "kills": "every CI job in tests.yml is bounded by a timeout"
     },
@@ -666,15 +511,6 @@
       "find": "      moveRowCursor(nextId);   // #1490: same move as before, now announced (P3-5)",
       "replace": "      selectedIds.clear();\n      selAnchorId = nextId;\n      selFocusId  = nextId;\n      ensureRowVisible(nextId);\n      updateSelVisuals();\n      updateNodeSelBar();",
       "kills": "blur leaves a cursor behind"
-    },
-    {
-      "id": "row-enter-lands-at-offset-zero",
-      "suite": "browser",
-      "why": "resuming an edit at the start rather than the end silently prepends whatever is typed next",
-      "file": "index.html",
-      "find": "setCaretByOffset(el, editableText(el).length)",
-      "replace": "setCaretByOffset(el, 0)",
-      "kills": "Escape leaves a cursor you can hear"
     },
     {
       "id": "row-cursor-no-front-door",
@@ -758,24 +594,6 @@
       "kills": "codeBlockParts separates the language from the body"
     },
     {
-      "id": "code-surfaces-diverge-on-pills",
-      "suite": "browser",
-      "why": "resolving pills in the export puts three different strings on three surfaces for one literal block",
-      "file": "index.html",
-      "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
-      "replace": "  return codeBlockParts(flattenArtifacts(textForDisplay(node), node, {}, true));",
-      "kills": "screen, Markdown and web page show a code block the same way"
-    },
-    {
-      "id": "row-enter-ignores-handled-key",
-      "suite": "browser",
-      "why": "without the guard the #1490 gate fires on an Enter a pill already handled, so one press re-rolls AND opens the point and the next splits it",
-      "file": "index.html",
-      "find": "  if (e.key === 'Enter' && !e.defaultPrevented && activeContentId == null",
-      "replace": "  if (e.key === 'Enter' && activeContentId == null",
-      "kills": "Enter on a focused in-content control acts once and chains"
-    },
-    {
       "id": "row-enter-retraction-erased",
       "suite": "unit",
       "why": "the disproved claim standing unretracted at the gate is what talks the next reader into rebuilding the bug",
@@ -783,15 +601,6 @@
       "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" — this comment",
       "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state — this comment",
       "kills": "the row-cursor Enter yields to any handler that already acted"
-    },
-    {
-      "id": "dialog-never-takes-focus",
-      "suite": "browser",
-      "why": "the original defect: an aria-modal dialog with focus outside it has no keyboard exit, and keys reach the document behind the scrim",
-      "file": "index.html",
-      "find": "      const first = root.querySelector(FOCUSABLE_SEL);\n      if (first) { first.focus(); return; }",
-      "replace": "      const first = null;\n      if (first) { first.focus(); return; }",
-      "kills": "every dialog lands focus inside itself"
     },
     {
       "id": "dialog-focus-overrides-the-caller",
@@ -839,42 +648,6 @@
       "kills": "hasRollupFor sees a rollup whether the pill is folded or not"
     },
     {
-      "id": "check-flip-unnamed",
-      "suite": "browser",
-      "why": "'Check failing' naming no point is unusable in a document of many checks; the label is the whole announcement",
-      "file": "index.html",
-      "find": "    announce(`Check ${word}${lbl ? ' on ' + lbl : ''}`);",
-      "replace": "    announce(`Check ${word}`);",
-      "kills": "a check flip says a label a person can hear"
-    },
-    {
-      "id": "sum-tip-ignores-the-parent",
-      "suite": "browser",
-      "why": "the pure core knowing about the parent proves nothing if the call site never hands it one",
-      "file": "index.html",
-      "find": "  const k = nudgeSumKey(node, parent ? parent.children : [node], key, parent);",
-      "replace": "  const k = nudgeSumKey(node, parent ? parent.children : [node], key);",
-      "kills": "a check flip says a label a person can hear"
-    },
-    {
-      "id": "nudge-does-not-yield",
-      "suite": "browser",
-      "why": "announce() clears then sets on rAF, so a tip fired in the same tick puts both in one frame and the functional message is never spoken at all",
-      "file": "index.html",
-      "find": "  setTimeout(() => flashHint(msg), NUDGE_YIELD_MS);\n  return true;",
-      "replace": "  flashHint(msg);\n  return true;",
-      "kills": "the sum tip still fires when there is no rollup, and waits its turn"
-    },
-    {
-      "id": "link-caption-token-leak",
-      "suite": "browser",
-      "why": "the original defect: linkText resolves [[#id]] and nothing else, so a target holding a pill was captioned with its internal [[math:key]] on screen",
-      "file": "index.html",
-      "find": "  const title = escHtml(label || stripCaptionTags(displayText(tn)) || '(untitled)');",
-      "replace": "  const title = escHtml(label || stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');",
-      "kills": "a live title reference reads what the target shows"
-    },
-    {
       "id": "mirror-fallback-caption-forked",
       "suite": "unit",
       "why": "the mirror's title-only fallback is the same sink; a family fixed on one member and not its twin is how this defect survived #1140 and #1402",
@@ -918,15 +691,6 @@
       "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll 🖩\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "replace": "    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "kills": "the query-base cell toast names the point the way the grid does"
-    },
-    {
-      "id": "link-anchor-ignored",
-      "suite": "browser",
-      "why": "the original defect: a bare id in a foreign title was looked up in the OPEN document, so it printed a bare node id (or, on a collision, silently named a different point)",
-      "file": "index.html",
-      "find": "    const owner = docId || home;                               // #1528: a bare id belongs to the string's home doc",
-      "replace": "    const owner = docId || (root.docId || '');",
-      "kills": "a foreign title resolves its own links in its own document"
     },
     {
       "id": "link-anchor-lost-in-recursion",
@@ -983,15 +747,6 @@
       "kills": "picker labels resolve tokens"
     },
     {
-      "id": "oracle-typed-door-drops-band",
-      "suite": "browser",
-      "why": "the original defect: the typed form was treated as a constructor, so the word `oracle` did not survive promotion",
-      "file": "index.html",
-      "find": "      roll.oracle = orp.label.toLowerCase() + (orp.swing ? ' + swing' : '');   // rides _grammar with the rest of the record",
-      "replace": "      // (band not stored)",
-      "kills": "an oracle keeps its own words through the authoring cycle"
-    },
-    {
       "id": "oracle-dialog-door-drops-band",
       "suite": "unit",
       "why": "a fix applied to one door and not the other makes two pills that are supposed to be identical differ, which is how this family keeps regressing",
@@ -999,15 +754,6 @@
       "find": "        const band = oracleBandOf(v.body);\n        if (band) roll.oracle = band;",
       "replace": "        const band = null;\n        if (band) roll.oracle = band;",
       "kills": "both doors record the band"
-    },
-    {
-      "id": "oracle-unfold-ignores-band",
-      "suite": "browser",
-      "why": "a band stored and never read back is the whole bug with a field added",
-      "file": "index.html",
-      "find": "    const band = oracleBandLive(rec);\n    if (band) return `{oracle: ${band}}`;",
-      "replace": "    const band = null;\n    if (band) return `{oracle: ${band}}`;",
-      "kills": "an oracle keeps its own words through the authoring cycle"
     },
     {
       "id": "oracle-band-trusted-unverified",
@@ -1035,24 +781,6 @@
       "find": "      if (n >= 0 && n <= 100 && oracleParts(`oracle: ${n} + swing`)?.body === t) return String(n) + ' + swing';",
       "replace": "      if (n >= 0 && n <= 100) return String(n) + ' + swing';",
       "kills": "oracleBandOf inverts every body an oracle can produce"
-    },
-    {
-      "id": "oracle-pill-unnamed",
-      "suite": "browser",
-      "why": "the label read 'Grammar: Yes', identical to a hand-typed pick, so no surface said the pill was an oracle or at what odds",
-      "file": "index.html",
-      "find": "  const oracleBand = oracleBandLive(g);",
-      "replace": "  const oracleBand = null;",
-      "kills": "an oracle keeps its own words through the authoring cycle"
-    },
-    {
-      "id": "convert-unknown-unit-blamed-on-dimension",
-      "suite": "browser",
-      "why": "the original defect: an unknown unit reported as a conversion between two kinds of units, on the pill and in the repair dialog alike",
-      "file": "index.html",
-      "find": "          if (k && k.why === 'unit') repl = convertUnitErrToken(k.unit);",
-      "replace": "          if (false) repl = convertUnitErrToken(k.unit);",
-      "kills": "convert() names the failure it actually had"
     },
     {
       "id": "convert-marker-swallowed-by-generic-arm",
@@ -1109,15 +837,6 @@
       "kills": "each marker reaches its own reason"
     },
     {
-      "id": "colonless-keyword-stays-prose",
-      "suite": "browser",
-      "why": "the original defect: classified as prose, the walk descends and promotes the inner brace, leaving half a pill and visible braces with no cue",
-      "file": "index.html",
-      "find": "  if (colonlessGenerateAttempt(body)) return 'invalid';",
-      "replace": "  if (false) return 'invalid';",
-      "kills": "a colon-less generate keyword survives whole"
-    },
-    {
       "id": "colonless-gate-is-the-space-not-the-brace",
       "suite": "unit",
       "why": "committing on the space is the obvious fix and the wrong one: it reclassifies eleven measured lines of ordinary prose as errors",
@@ -1143,15 +862,6 @@
       "find": "    + (REPEAT_KEYWORD_RE.test(ck) ? `${ck}: {a|b}` : GENERATE_FORM_HINT[ck]) + '}.';",
       "replace": "    + `${ck}: a | b | c` + '}.';",
       "kills": "every keyword has a form hint, and every hint is a form that really parses"
-    },
-    {
-      "id": "repeat-roll-lost-outside-edit",
-      "suite": "browser",
-      "why": "the original defect: the roll lived only in edit-mode paths, so a picker/chord completion ended a recurrence permanently and silently",
-      "file": "index.html",
-      "find": "  if (node.checked && rollForwardRepeat(node, wasDone, say)) {",
-      "replace": "  if (false && rollForwardRepeat(node, wasDone, say)) {",
-      "kills": "every door that completes a repeating point rolls it forward"
     },
     {
       "id": "picker-door-bypasses-the-writer",
@@ -1190,15 +900,6 @@
       "kills": "the one writer rolls a repeating point forward, and leaves everything else alone"
     },
     {
-      "id": "partial-total-wears-success-chrome",
-      "suite": "browser",
-      "why": "the original defect: a sum computed around a hole was indistinguishable from a correct one in className, border, title and aria",
-      "file": "index.html",
-      "find": "  if (aggHasSkippedValues(cookieNode, m.expr)) {",
-      "replace": "  if (false) {",
-      "kills": "a partial total says so, and a correct one is left alone"
-    },
-    {
       "id": "skipped-gate-blind-to-scope",
       "suite": "unit",
       "why": "reading node.children only makes a subtree rollup report clean, which is the case where the hole is hardest to see by eye",
@@ -1217,15 +918,6 @@
       "kills": "aggHasSkippedValues reads the SCOPE"
     },
     {
-      "id": "partial-cue-counts-missing-props-too",
-      "suite": "browser",
-      "why": "counting auditAgg's 'no cost' rows alongside real holes would overstate the mark on an ordinary rollup",
-      "file": "index.html",
-      "find": "    const skipped = (audit?.missing || []).filter(x => x.reason === 'not a number');",
-      "replace": "    const skipped = (audit?.missing || []);",
-      "kills": "a partial total says so, and a correct one is left alone"
-    },
-    {
       "id": "partial-cue-withholds-the-number",
       "suite": "unit",
       "why": "the partial total is real and wanted; erroring it or blanking it withholds what the reader came for",
@@ -1233,24 +925,6 @@
       "find": "      + `<span class=\"math-result\">${escHtml(dispVal)}</span>`\n      + `<span class=\"math-empty-mark\" aria-hidden=\"true\">${n} not counted</span>`",
       "replace": "      + `<span class=\"math-result\"></span>`\n      + `<span class=\"math-empty-mark\" aria-hidden=\"true\">${n} not counted</span>`",
       "kills": "the pill asks, and cues a partial total without erroring it"
-    },
-    {
-      "id": "copy-fallback-drops-focus",
-      "suite": "browser",
-      "why": "the reported defect: removing the borrowed textarea leaves focus on <body>, and in a contenteditable outliner that is the caret gone",
-      "file": "index.html",
-      "find": "  giveItBack();\n  return ok;",
-      "replace": "  return ok;",
-      "kills": "a copy that falls back to execCommand gives the caret back"
-    },
-    {
-      "id": "copy-fallback-forgets-the-caret",
-      "suite": "browser",
-      "why": "restoring focus alone collapses the caret to the start of the point, which is a silent edit-position change",
-      "file": "index.html",
-      "find": "  const caret = isPoint ? getCaretOffset(prev) : null;",
-      "replace": "  const caret = null;",
-      "kills": "a copy that falls back to execCommand gives the caret back"
     },
     {
       "id": "copy-fallback-restores-only-on-success",
@@ -1262,15 +936,6 @@
       "kills": "the clipboard fallback returns the focus and the caret it borrowed"
     },
     {
-      "id": "dateless-chip-not-flagged",
-      "suite": "browser",
-      "why": "the reported defect: a repeat with no date to advance from rendered the same healthy chip as one that works",
-      "file": "index.html",
-      "find": "      const inert = ok && repeatNeedsDate(node);",
-      "replace": "      const inert = false;",
-      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
-    },
-    {
       "id": "dateless-chip-borrows-the-bad-phrase-words",
       "suite": "unit",
       "why": "two different failures told with one sentence sends the reader to the wrong remedy",
@@ -1280,15 +945,6 @@
       "kills": "all three surfaces route through the ONE dateless predicate"
     },
     {
-      "id": "dialog-promise-not-retracted",
-      "suite": "browser",
-      "why": "the dialog went on promising 'Advances when you complete it' for a schedule that cannot advance",
-      "file": "index.html",
-      "find": "      if (repeatIsDateless(startF.inp.value, dueF.inp.value)) {",
-      "replace": "      if (false) {",
-      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
-    },
-    {
       "id": "dialog-warning-goes-stale",
       "suite": "unit",
       "why": "the warning reads two OTHER fields, so without their listeners it is right only at open time",
@@ -1296,15 +952,6 @@
       "find": "  dueF.inp.addEventListener('input', () => repeatF.update());",
       "replace": "  ;",
       "kills": "all three surfaces route through the ONE dateless predicate"
-    },
-    {
-      "id": "dateless-completion-silent",
-      "suite": "browser",
-      "why": "the original silence: completing the point ended the recurrence and said nothing",
-      "file": "index.html",
-      "find": "    tell('Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.');",
-      "replace": "    ;",
-      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
     },
     {
       "id": "dateless-check-hand-rolled-per-surface",
@@ -1334,15 +981,6 @@
       "kills": "the announcement and the live cue both route through the one outcome-aware sentence"
     },
     {
-      "id": "stub-deleted-in-silence",
-      "suite": "browser",
-      "why": "five empty stubs classify as prose, so without this the announce path returns before reaching them and the text vanishes with no word",
-      "file": "index.html",
-      "find": "    if (braceBodyIsEmptyStub(body)) announce(braceAttemptAnnounce(body, braceRules, braceScope));",
-      "replace": "    ;",
-      "kills": "a brace that is about to be deleted says so, and one that stays still says it stays"
-    },
-    {
       "id": "stub-predicate-forked-again",
       "suite": "unit",
       "why": "a second copy of the deletion test is exactly how the announcement and the deletion drifted apart",
@@ -1368,15 +1006,6 @@
       "find": "  return (form ? form + ' ' : '') + 'This empty pill is removed when you leave the point.';",
       "replace": "  return (form ? form + ' ' : '') + 'Check the syntax.';",
       "kills": "every empty stub says what actually happens to it, in its own words"
-    },
-    {
-      "id": "dialog-save-refuses-in-silence",
-      "suite": "browser",
-      "why": "the reported defect: an enabled Save pressed, nothing written, nothing said, nothing changed on screen",
-      "file": "index.html",
-      "find": "  announce(why);                                    // P4: a failed action is an event, not a state",
-      "replace": "  ;",
-      "kills": "an enabled Save that refuses says why, and a valid one still saves"
     },
     {
       "id": "schedule-save-bails-bare-again",
@@ -1415,15 +1044,6 @@
       "kills": "every dialog preview is NAMED"
     },
     {
-      "id": "undo-restores-token-without-record",
-      "suite": "browser",
-      "why": "the reported defect: undo brought the [[type:key]] token back with nothing behind it, a missing-data pill that survived save",
-      "file": "index.html",
-      "find": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }",
-      "replace": "      ;",
-      "kills": "undo brings back a deleted pill whole, and redo takes it away again"
-    },
-    {
       "id": "prune-drops-silently-again",
       "suite": "unit",
       "why": "the prune is the one place that knows which records stop existing; reporting nothing is how undo lost them",
@@ -1460,15 +1080,6 @@
       "kills": "restoreArtifacts puts records back without duplicating what is already there"
     },
     {
-      "id": "agenda-more-keyboard-dead",
-      "suite": "browser",
-      "why": "the reported defect: a focusable labelled <button> that only listens for mousedown, so Enter and Space do nothing (#1021 shape)",
-      "file": "index.html",
-      "find": "      more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expand(); } });",
-      "replace": "      ;",
-      "kills": "the day’s expand button and the day cell both answer the keyboard"
-    },
-    {
       "id": "agenda-less-keyboard-dead",
       "suite": "unit",
       "why": "the collapse twin was wired the same way, and fixing only the one you were shown is how the family stays half-done",
@@ -1476,15 +1087,6 @@
       "find": "      less.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); } });",
       "replace": "      ;",
       "kills": "the day’s expand/collapse buttons answer the keyboard"
-    },
-    {
-      "id": "agenda-cell-drops-focus-on-enter",
-      "suite": "browser",
-      "why": "Enter on a focused day cell used to leave the keyboard on <body> with nowhere to go",
-      "file": "index.html",
-      "find": "          createDatedPointOnInbox(ep);\n        });\n      }",
-      "replace": "          ;\n        });\n      }",
-      "kills": "the day’s expand button and the day cell both answer the keyboard"
     },
     {
       "id": "agenda-cell-fires-behind-its-children",
@@ -1523,24 +1125,6 @@
       "kills": "the count qualifies itself only when the zoom is actually hiding matches"
     },
     {
-      "id": "empty-state-blames-the-document",
-      "suite": "browser",
-      "why": "'Nothing matches' while the document holds matches is the half a reader acts on, and it says the wrong thing",
-      "file": "index.html",
-      "find": "  const seDoc = (seShow && focusedId != null) ? searchMatchCounts(vp).inDoc : 0;",
-      "replace": "  const seDoc = 0;",
-      "kills": "a zoomed search says what the zoom is hiding, and offers the way out"
-    },
-    {
-      "id": "zoomout-door-keyboard-dead",
-      "suite": "browser",
-      "why": "a focusable labelled button no key can operate is the #1021 shape, and a source pin cannot see it",
-      "file": "index.html",
-      "find": "    out.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });",
-      "replace": "    ;",
-      "kills": "a zoomed search says what the zoom is hiding, and offers the way out"
-    },
-    {
       "id": "zoomout-door-clears-the-query",
       "suite": "unit",
       "why": "a door that zooms out AND drops the search leaves the reader retyping the query they just ran",
@@ -1548,33 +1132,6 @@
       "find": "    const act = () => { focusedId = null; render(); announce('Zoomed out. ' + searchScopeSay(seDoc, seDoc, false)); };",
       "replace": "    const act = () => { focusedId = null; applySearch(''); announce('Zoomed out.'); };",
       "kills": "the count, the empty state and the way out are all wired"
-    },
-    {
-      "id": "guide-filter-silent",
-      "suite": "browser",
-      "why": "the reported defect: 94 entries to 18 to 0 with focus in the box and nothing said at any step",
-      "file": "index.html",
-      "find": "    sayFilter(vis.length);   // P4-4/P3-5: the list changed under a caret that never moved",
-      "replace": "    ;",
-      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
-    },
-    {
-      "id": "guide-pane-keeps-the-excluded-entry",
-      "suite": "browser",
-      "why": "the guide said No results on the left while rendering that entry in full on the right",
-      "file": "index.html",
-      "find": "    else if (!vis.length) activeId = null;",
-      "replace": "    ;",
-      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
-    },
-    {
-      "id": "guide-empty-keys-do-nothing",
-      "suite": "browser",
-      "why": "ArrowDown and Enter on an empty list were total no-ops, the shape #1474 fixed for the builder",
-      "file": "index.html",
-      "find": "      else announce(guideEmptyMessage());",
-      "replace": "      ;",
-      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
     },
     {
       "id": "filter-count-stutters",
@@ -1604,15 +1161,6 @@
       "kills": "both filter surfaces speak, read their words off the node, and do not stutter"
     },
     {
-      "id": "syntax-samples-wired-as-chips",
-      "suite": "browser",
-      "why": "the reported defect: five rows documenting authoring syntax were stamped as Add-to-search buttons and pasted a pill body into the box",
-      "file": "index.html",
-      "find": "  const CHIP_SEL = '.sh-row kbd:not([data-doc])';",
-      "replace": "  const CHIP_SEL = '.sh-row kbd';",
-      "kills": "a syntax sample does nothing to the search, and the filter chips still work"
-    },
-    {
       "id": "doc-sample-still-looks-clickable",
       "suite": "unit",
       "why": "the five were byte-identical in affordance to the 44 real chips, which is what made the confusion invisible",
@@ -1640,24 +1188,6 @@
       "kills": "every reader of the chip set honours the marker"
     },
     {
-      "id": "delete-leaks-through-dialogs",
-      "suite": "browser",
-      "why": "the reported data loss: Backspace inside the modal Link graph took the document from 5 points to 1",
-      "file": "index.html",
-      "find": "&& activeContentId == null && !ctrl && outlineOwnsKeys()) { e.preventDefault(); deleteSelected(); }",
-      "replace": "&& activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }",
-      "kills": "an open dialog owns its keys, and the outline still owns its own"
-    },
-    {
-      "id": "arrows-leak-through-dialogs",
-      "suite": "browser",
-      "why": "the selection those arrows build behind a scrim is what Backspace then deletes",
-      "file": "index.html",
-      "find": "    if (!outlineOwnsKeys()) return;\n    if (!flatRows.length) return;",
-      "replace": "    if (!flatRows.length) return;",
-      "kills": "an open dialog owns its keys, and the outline still owns its own"
-    },
-    {
       "id": "ownership-gate-back-to-element-type",
       "suite": "unit",
       "why": "type is the wrong predicate: one Tab apart in one dialog, its INPUT was inert and the BUTTON beside it cut the document",
@@ -1665,15 +1195,6 @@
       "find": "    const a = document.activeElement;\n    if (!a || a === document.body) return true;              // the row-cursor state\n    return !!a.closest('#outline, #node-sel-bar');           // the outline and its own selection chrome",
       "replace": "    const a = document.activeElement;\n    return !(a && a.tagName === 'INPUT');",
       "kills": "the outline acts on arrows and Delete only when it owns the keyboard"
-    },
-    {
-      "id": "ownership-gate-drops-the-selection-bar",
-      "suite": "browser",
-      "why": "Shift+ArrowDown moves focus to the selection bar, so a gate that only allows <body> breaks bulk delete",
-      "file": "index.html",
-      "find": "    return !!a.closest('#outline, #node-sel-bar');           // the outline and its own selection chrome",
-      "replace": "    return !!a.closest('#outline');",
-      "kills": "an open dialog owns its keys, and the outline still owns its own"
     },
     {
       "id": "ownership-gate-ignores-open-layers",
@@ -1755,24 +1276,6 @@
       "find": "  '#tag': 'tag',\n  '#tag/sub': 'tag/sub',",
       "replace": "  '#tag': '#tag',\n  '#tag/sub': 'tag/sub',",
       "kills": "#1513 a legend chip whose label carries a placeholder is a template"
-    },
-    {
-      "id": "operator-chip-stops-filtering",
-      "suite": "browser",
-      "why": "the risk of this fix is misclassifying a working filter, which only shows as a chip that stopped filtering",
-      "file": "index.html",
-      "find": "  'has:key': 'key',",
-      "replace": "  'has:key': 'key',\n  'has:tag': 'tag',",
-      "kills": "#1513 a legend template chip lands ready to type, and an operator chip still filters"
-    },
-    {
-      "id": "template-chip-blanks-the-outline",
-      "suite": "browser",
-      "why": "driven: the verdict on a teaching string is what the user sees, and no source pin can read it",
-      "file": "index.html",
-      "find": "      announce(chipTemplateSay(tok));\n      return;\n    }",
-      "replace": "      announce(chipTemplateSay(tok));\n    }",
-      "kills": "#1513 a legend template chip lands ready to type, and an operator chip still filters"
     },
     {
       "id": "tablist-hand-rolls-the-rove",
@@ -1865,24 +1368,6 @@
       "kills": "#1514 the document tab strip is one roving group"
     },
     {
-      "id": "tab-stop-grows-with-each-document",
-      "suite": "browser",
-      "why": "driven: six stops for four documents is the measurement, and only walking Tab counts stops honestly",
-      "file": "index.html",
-      "find": "    close.setAttribute('tabindex', '-1');",
-      "replace": "    close.removeAttribute('data-none');",
-      "kills": "#1514 the tab strip is one roving group whose stop follows focus"
-    },
-    {
-      "id": "tab-stop-does-not-follow-focus",
-      "suite": "browser",
-      "why": "driven: the stop stayed pinned to the active tab, so Tab away and back never returned where you roved",
-      "file": "index.html",
-      "find": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) roveTo(tab, tabs[to]);",
-      "replace": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) tabs[to].focus();",
-      "kills": "#1514 the tab strip is one roving group whose stop follows focus"
-    },
-    {
       "id": "strip-escape-double-closes",
       "suite": "unit",
       "why": "cause 1: without stopPropagation the strip listener closes a second time and overrides the restore",
@@ -1955,24 +1440,6 @@
       "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
     },
     {
-      "id": "capture-escape-strands-focus",
-      "suite": "browser",
-      "why": "driven: where focus and the caret actually land is the whole finding, and no source pin sees it",
-      "file": "index.html",
-      "find": "  const back = captureReturnId; captureReturnId = null;",
-      "replace": "  const back = captureReturnId; captureReturnId = null;\n  document.getElementById('btn-capture').focus(); if (captureOpen === false) return;",
-      "kills": "#1515 every toolbar strip hands the caret back to the interrupted edit"
-    },
-    {
-      "id": "sibling-strips-left-behind",
-      "suite": "browser",
-      "why": "driven: the fix is only as good as its narrowest member, and journal/chronicle were the members",
-      "file": "index.html",
-      "find": "  if (!chronicleOpen) { chronicleCount = 0; armChromeReturn(); chronicleReturnId = captureCurrentPointId(); }",
-      "replace": "  if (!chronicleOpen) { chronicleCount = 0; chronicleReturnId = null; }",
-      "kills": "#1515 every toolbar strip hands the caret back to the interrupted edit"
-    },
-    {
       "id": "insert-sigil-glues-to-the-word",
       "suite": "unit",
       "why": "the first barrier: a sigil glued to the preceding token matches nothing, permanently",
@@ -2016,24 +1483,6 @@
       "find": "    checkSlash(content, node.id);\n    checkLinkTrigger(content, node.id);\n    checkBraceTrigger(content, node.id);\n    checkTagTrigger(content, node.id);\n    checkEmojiTrigger(content, node.id);\n    updateSelToolbar();",
       "replace": "    checkSlash(content, node.id, { force: true });\n    checkLinkTrigger(content, node.id);\n    checkBraceTrigger(content, node.id);\n    checkTagTrigger(content, node.id);\n    checkEmojiTrigger(content, node.id);\n    updateSelToolbar();",
       "kills": "#1108 the trigger stops firing on a bare slash mid-prose"
-    },
-    {
-      "id": "insert-pill-dead-past-caret-zero",
-      "suite": "browser",
-      "why": "driven on a phone viewport: whether the menu opens is the whole finding, and the edit bar does not exist on a desktop page",
-      "file": "index.html",
-      "find": "  const sigil = insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@';\n  document.execCommand('insertText', false, sigil);",
-      "replace": "  const sigil = '@';\n  document.execCommand('insertText', false, sigil);",
-      "kills": "#1516 the touch Insert-a-pill button opens the menu at any caret"
-    },
-    {
-      "id": "insert-pill-mangles-the-text",
-      "suite": "browser",
-      "why": "a menu that opens over a mangled `Buy milk@` passes every open/closed assertion and is still wrong",
-      "file": "index.html",
-      "find": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@'",
-      "replace": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? '@ ' : '@'",
-      "kills": "#1516 the touch Insert-a-pill button opens the menu at any caret"
     },
     {
       "id": "capture-commit-redirects-across-slots",
@@ -2099,24 +1548,6 @@
       "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
     },
     {
-      "id": "capture-chip-contradicts-the-tree",
-      "suite": "browser",
-      "why": "driven: the finding is the disagreement between the chip, the tree and the toast, which only a running app shows",
-      "file": "index.html",
-      "find": "  const inbox = captureDest();   // #1517: the same reader the chip names, so they cannot disagree",
-      "replace": "  const inbox = inboxAt(captureSlot) || resolveInbox() || root;",
-      "kills": "#1517 the chip, the tree and the toast agree on where a capture went"
-    },
-    {
-      "id": "capture-zero-setup-broken-by-the-fix",
-      "suite": "browser",
-      "why": "driven: the way this fix breaks is losing #559's working default, which shows only as a capture that goes nowhere",
-      "file": "index.html",
-      "find": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || root; }",
-      "replace": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || nodeById(root.inboxes?.find(Boolean)) || root; }",
-      "kills": "#1517 the chip, the tree and the toast agree on where a capture went"
-    },
-    {
       "id": "fn-panel-docks-under-the-quick-bar",
       "suite": "unit",
       "why": "the whole defect: an inline bottom:0 that beats the CSS lift written for exactly this case",
@@ -2169,33 +1600,6 @@
       "find": "  panel.style.bottom = (panel.classList.contains('on') ? currentBottomPanelFloorPx() : 0) + 'px';",
       "replace": "  panel.style.bottom = (panel.classList.contains('on') ? 0 : 0) + 'px';",
       "kills": "#1518 a bottom-docked panel clears the touch quick bar"
-    },
-    {
-      "id": "docked-panels-ignore-keyboard-floor",
-      "suite": "browser",
-      "why": "#1553: geometry must be measured above the visual viewport when the software keyboard is open",
-      "file": "index.html",
-      "find": "  return panelFloorPx(kbH, quickBarHeight());",
-      "replace": "  return panelFloorPx(0, quickBarHeight());",
-      "kills": "#1553 backlinks and variables panels stay above the visual viewport keyboard floor"
-    },
-    {
-      "id": "footnote-editor-invisible-under-the-bar",
-      "suite": "browser",
-      "why": "driven: 53px of overlap and a row that hit-tests to qb-capture is geometry, and geometry needs a real touch viewport",
-      "file": "index.html",
-      "find": "  return panelFloorPx(kbH, quickBarHeight());",
-      "replace": "  return panelFloorPx(0, quickBarHeight());",
-      "kills": "#1518 the footnote panel sits ON the touch quick bar"
-    },
-    {
-      "id": "panel-floats-above-the-keyboard",
-      "suite": "browser",
-      "why": "driven: the sum leaves a gap over the keyboard, which only a measured rect shows",
-      "file": "index.html",
-      "find": "  return Math.max(n(kbH), n(qbH));",
-      "replace": "  return n(kbH) + n(qbH);",
-      "kills": "#1518 the footnote panel sits ON the touch quick bar"
     },
     {
       "id": "strip-swallows-every-global-chord",
@@ -2252,24 +1656,6 @@
       "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
     },
     {
-      "id": "undo-never-reaches-the-document-stack",
-      "suite": "browser",
-      "why": "driven: whether the chord moves undoStack is the finding, and a source pin sees the listener not the swallow",
-      "file": "index.html",
-      "find": "  if (k === 'z' || k === 'y') return !typed;      // undo / redo, once the box has none of its own",
-      "replace": "  if (k === 'z' || k === 'y') return false;",
-      "kills": "#1519 undo reaches the document from inside a strip"
-    },
-    {
-      "id": "text-chords-leak-to-the-outline",
-      "suite": "browser",
-      "why": "driven: a blanket forward pastes a point into the outline from the capture box, which only a running app shows",
-      "file": "index.html",
-      "find": "  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)\n  return false;",
-      "replace": "  return true;",
-      "kills": "#1519 undo reaches the document from inside a strip"
-    },
-    {
       "id": "builder-syntax-eats-the-row",
       "suite": "unit",
       "why": "the whole defect: a nowrap non-shrinking syntax column collapses the name to zero width",
@@ -2304,24 +1690,6 @@
       "find": "\n  .builder-nav{width:150px}",
       "replace": "\n  .builder-nav{width:260px}",
       "kills": "#1520 the builder row gives the name the width and stacks the syntax"
-    },
-    {
-      "id": "command-names-render-at-zero-width",
-      "suite": "browser",
-      "why": "driven: a zero-width render is invisible to every presence check, which is how UXP-250 shipped it",
-      "file": "index.html",
-      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
-      "replace": ".builder-item>.builder-typed{margin-left:0}",
-      "kills": "#1520 every command name and description renders inside the builder nav"
-    },
-    {
-      "id": "syntax-line-overflows-the-nav",
-      "suite": "browser",
-      "why": "driven: without the cap a long syntax example runs past the nav and is clipped, which a width-only check cannot see",
-      "file": "index.html",
-      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
-      "replace": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px}",
-      "kills": "#1520 every command name and description renders inside the builder nav"
     },
     {
       "id": "dial-tears-down-the-edit",
@@ -2378,24 +1746,6 @@
       "kills": "#1521 the verbosity dial carries the caret across its re-render"
     },
     {
-      "id": "dial-swallows-the-next-keystroke",
-      "suite": "browser",
-      "why": "driven: where the caret is and whether the next keystroke lands is the finding, and no pin sees it",
-      "file": "index.html",
-      "find": "  renderKeepingCaret();   // #1521: a display setting must not end the edit it renders around",
-      "replace": "  render();",
-      "kills": "#1521 every verbosity door keeps the caret"
-    },
-    {
-      "id": "dial-restores-to-the-wrong-offset",
-      "suite": "browser",
-      "why": "driven: coming back to offset 0 instead of 8 looks like a restore and moves the user's place",
-      "file": "index.html",
-      "find": "  return { id, offset: ok ? Math.floor(offset) : null };",
-      "replace": "  return { id, offset: 0 };",
-      "kills": "#1521 every verbosity door keeps the caret"
-    },
-    {
       "id": "swap-keeps-the-outgoing-cursor",
       "suite": "unit",
       "why": "the cause: the discarded document's row cursor and selection surviving the swap",
@@ -2439,24 +1789,6 @@
       "find": "  const ok = id => id != null && !!live(id);",
       "replace": "  const ok = id => id != null;",
       "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
-    },
-    {
-      "id": "swap-strands-the-arrows",
-      "suite": "browser",
-      "why": "driven: nothing moves, nothing is announced and the PAGE SCROLLS -- none of which a source pin sees",
-      "file": "index.html",
-      "find": "  selectedIds.clear(); selAnchorId = null; selFocusId = null;\n  clearTimeout(searchDebounce);",
-      "replace": "  clearTimeout(searchDebounce);",
-      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
-    },
-    {
-      "id": "stale-cursor-defence-removed",
-      "suite": "browser",
-      "why": "driven on a NON-adoptDoc path: undo replaces root too, and the guard is what covers it",
-      "file": "index.html",
-      "find": "    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));",
-      "replace": "    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;",
-      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
     },
     {
       "id": "foot-loses-the-wrap",
@@ -2522,24 +1854,6 @@
       "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
     },
     {
-      "id": "foot-clips-off-the-card",
-      "suite": "browser",
-      "why": "driven: a clipped button still reports a healthy rect (#1520), so only a hit test proves a finger can land on it",
-      "file": "index.html",
-      "find": "\n.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}",
-      "replace": "\n.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}",
-      "kills": "#1523 every dialog footer button stays inside the card and stays tappable at phone widths"
-    },
-    {
-      "id": "welcome-leak-narrows-every-dialog",
-      "suite": "browser",
-      "why": "driven: the leak is invisible in source once closeIo is read alone -- it only shows as 16px off the card of the NEXT dialog",
-      "file": "index.html",
-      "find": "  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)\n  ioCard.innerHTML = ''; ioCancel = null;",
-      "replace": "  ioCard.innerHTML = ''; ioCancel = null;",
-      "kills": "#1523 every dialog footer button stays inside the card and stays tappable at phone widths"
-    },
-    {
       "id": "band-back-to-centre-in-host",
       "suite": "unit",
       "why": "the O1 blind spot: a control shoved out of its host has its centre outside it, so the old test skipped the very failure the reach column is for",
@@ -2594,15 +1908,6 @@
       "kills": "#1559 the sweep ships the fixtures and the freezes that its own findings depend on"
     },
     {
-      "id": "sweep-seed-stops-dismissing-the-chooser",
-      "suite": "browser",
-      "why": "driven: this is the exact rot that silently stopped the old recipe measuring -- #io-back covers the viewport and every control reads unreachable",
-      "file": "tools/layout-sweep.mjs",
-      "find": "  if (typeof closeIo === 'function') closeIo();\n  document.getElementById('io-back')?.classList.remove('on');\n",
-      "replace": "",
-      "kills": "#1559 the layout sweep still measures: seed, freeze, and a live reach walk"
-    },
-    {
       "id": "probe-aims-at-the-box-centre",
       "suite": "unit",
       "why": "the centre of a control taller than its pane lands past the pane and hits the backdrop, so a plainly tappable control reads unreachable",
@@ -2619,33 +1924,6 @@
       "find": "  if (right - left < 1 || bottom - top < 1) return null;",
       "replace": "",
       "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
-    },
-    {
-      "id": "toolbar-declutter-back-to-560",
-      "suite": "browser",
-      "why": "driven: the whole defect is that 560 is not the width where the row stops fitting; the CSS looks correct either way",
-      "file": "index.html",
-      "find": "@media (max-width:760px){\n  #level-ctl{display:none}",
-      "replace": "@media (max-width:560px){\n  #level-ctl{display:none}",
-      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
-    },
-    {
-      "id": "strip-loses-its-one-button-floor",
-      "suite": "browser",
-      "why": "driven: without it the strip collapses to 5px -- technically scrollable, no visible front door",
-      "file": "index.html",
-      "find": "margin:-5px -5px 0 0;min-width:44px}",
-      "replace": "margin:-5px -5px 0 0}",
-      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
-    },
-    {
-      "id": "level-door-removed-not-moved",
-      "suite": "browser",
-      "why": "driven: hiding the toolbar control without showing the File-menu row deletes the capability instead of relocating it (P2)",
-      "file": "index.html",
-      "find": "  #fm-levels-row{display:flex}   /* the level control lives in the File menu at these widths */\n",
-      "replace": "",
-      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
     },
     {
       "id": "chip-cannot-yield",
@@ -2684,15 +1962,6 @@
       "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
     },
     {
-      "id": "fm-level-door-unnamed",
-      "suite": "browser",
-      "why": "driven: the toolbar control is hidden across a 200px band, so the door it moves to has to carry its name",
-      "file": "index.html",
-      "find": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\" aria-label=\"Show 1 level\">1</button>",
-      "replace": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\">1</button>",
-      "kills": "#1560 the File-menu level control is tappable and actually changes the level"
-    },
-    {
       "id": "fourth-scroll-strip-ships-unmeasured",
       "suite": "unit",
       "why": "census ratchet: a new bar sharing the recipe that carried this defect must not arrive without a sweep surface watching where its controls land",
@@ -2727,15 +1996,6 @@
       "find": "      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
       "replace": "      - run: npm install --no-save playwright@1.49.1\n      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
       "kills": "#1557 the fast offline guards do not sit downstream of the suite"
-    },
-    {
-      "id": "focus-guard-armed-after-the-surgery",
-      "suite": "browser",
-      "why": "driven: this is #1557's ordering exactly. The flag still EXISTS and both source pins stay green, so only a real scroll can tell the two orderings apart -- one exitEdit per scroll away and back, with an undo entry the user never earned",
-      "file": "index.html",
-      "find": "  if (focusedInner) _vlPreservingFocus = true;\n  if (activeEl) activeEl.remove();",
-      "replace": "  if (activeEl) activeEl.remove();",
-      "kills": "#1557 scrolling an edited row out of the window and back does not commit the edit"
     },
     {
       "id": "solo-rpg-census-bare-rule",
@@ -3053,15 +2313,6 @@
       "kills": "fnBody stops at its own closing brace: no body swallows a top-level function"
     },
     {
-      "id": "journal-day-refictioned-driven",
-      "suite": "browser",
-      "why": "the driven half of journal-day-refictioned: with the calendar defaulted back in, a real-world journal entry files under 1204/04/12 in a running document, which no source pin can see",
-      "file": "index.html",
-      "find": "return formatEpochDays(dueDateToday(null), null); }",
-      "replace": "return formatEpochDays(dueDateToday()); }",
-      "kills": "a custom calendar moves the chronicle and the due dates, never the journal"
-    },
-    {
       "id": "frozen-marker-unexplained",
       "suite": "unit",
       "why": "a rule pill frozen before its dependency existed showed `The {adjective?} {noun?}` raw under a tip reading \"Click to re-generate\", which is chrome for a pill that is fine",
@@ -3105,15 +2356,6 @@
       "find": "  if (missing) return braceAttemptReason(missing, rules || Object.create(null), vars || Object.create(null));",
       "replace": "  if (missing) return `“${missing}” cannot be resolved. Click to ${verb}`;",
       "kills": "unresolvedNote — a name that resolves NOW says so; one that does not gets the plain-text sentence"
-    },
-    {
-      "id": "frozen-marker-unmarked-driven",
-      "suite": "browser",
-      "why": "the driven half: without the dot the only signal is a tooltip, so a frozen marker is invisible until someone hovers the pill that looks fine",
-      "file": "index.html",
-      "find": "${stale || unresNote ? ' gr-stale' : ''}",
-      "replace": "${stale ? ' gr-stale' : ''}",
-      "kills": "a pill frozen before its rule existed says so, and one click heals it"
     },
     {
       "id": "guide-pattern-covers-dropped",
@@ -3359,15 +2601,6 @@
       "kills": "the underline the concept guide promises"
     },
     {
-      "id": "paste-points-not-promoted",
-      "suite": "browser",
-      "why": "the paste path built its points with mkNode() and never promoted them, so only the LAST pasted line went live (focusNode puts it in edit mode and exitEdit converts on the way out) while every earlier line stayed literal {\u2026} and saved that way -- on guide/cookbook.md's documented paste-the-block-in path",
-      "file": "index.html",
-      "find": "  pastedTops.forEach(promoteLoadedShorthand);\n",
-      "replace": "",
-      "kills": "every pasted line becomes a live pill"
-    },
-    {
       "id": "paste-promotion-after-the-index",
       "suite": "unit",
       "why": "promoting AFTER buildIndex leaves the index holding the raw shorthand; the ordering is load-bearing and an ordering pin that cannot fail is the #1133 shape",
@@ -3375,15 +2608,6 @@
       "find": "  pastedTops.forEach(promoteLoadedShorthand);\n  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n  buildIndex(root, null);",
       "replace": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n  buildIndex(root, null);\n  pastedTops.forEach(promoteLoadedShorthand);",
       "kills": "a pasted point gets the same"
-    },
-    {
-      "id": "undo-redo-drops-its-own-orphans",
-      "suite": "browser",
-      "why": "applyEntry ran the prune and discarded its return, so the first Ctrl+Z threw away exactly what the next Ctrl+Shift+Z needed and all eight prunable sidecars came back as a (missing data) pill that then autosaved. #1507 taught prune to report and taught exitEdit to listen; this caller was never taught",
-      "file": "index.html",
-      "find": "      if (orphaned) {\n        let carried = null;",
-      "replace": "      if (false && orphaned) {\n        let carried = null;",
-      "kills": "undo then redo keeps the pill record"
     },
     {
       "id": "undo-redo-orphans-clobber-the-edit",
@@ -3395,15 +2619,6 @@
       "kills": "undo/redo keeps what ITS OWN prune orphaned"
     },
     {
-      "id": "contest-left-fixed-margin-reversed",
-      "suite": "browser",
-      "why": "the shipped defect: with a fixed target on the LEFT the pill printed 'short by 2' while {= L} handed math +2 and {= L > 0} lit a tick on a failed roll. The right-fixed half was correct, so the two halves of the guide's promised 'either side can be a fixed target' behaved oppositely",
-      "file": "index.html",
-      "find": "    margin: (!ls.roll !== !rs.roll) && !ls.roll ? rs.total - ls.total : ls.total - rs.total,",
-      "replace": "    margin: ls.total - rs.total,",
-      "kills": "a left-fixed contest agrees with the number it feeds math"
-    },
-    {
       "id": "contest-verdict-read-from-the-margin",
       "suite": "unit",
       "why": "deriving the verdict from the stored margin rather than the totals makes every contest saved BEFORE this fix start lying, since those records carry a left-right margin even when one side is fixed",
@@ -3411,15 +2626,6 @@
       "find": "  const diff = vs.leftTotal - vs.rightTotal;                  // the two-sided reading",
       "replace": "  const diff = Number(vs.margin) || 0;                        // the two-sided reading",
       "kills": "versusVerdict reads the totals"
-    },
-    {
-      "id": "contest-freeze-has-no-arm",
-      "suite": "browser",
-      "why": "without a contest arm frozenTokenText falls through to the resolved varMap, where a contest is not a plain number: an anonymous one becomes ' = ?' and a named one its bare margin. Freeze to text writes that into the LIVE document behind a success toast",
-      "file": "index.html",
-      "find": "  if (rec.versus) {\n    const v = rec.versus, verdict = versusVerdict(v);",
-      "replace": "  if (false && rec.versus) {\n    const v = rec.versus, verdict = versusVerdict(v);",
-      "kills": "freezing or exporting a contest keeps it"
     },
     {
       "id": "contest-winner-read-from-the-margin",
@@ -3431,15 +2637,6 @@
       "kills": "the pill and the export read the same verdict"
     },
     {
-      "id": "doc-tab-chord-shift-blind",
-      "suite": "browser",
-      "why": "the shipped defect: `ctrl && e.shiftKey && e.key===']'` is unsatisfiable because Shift makes the browser send '}', so both advertised document-tab chords did nothing for their whole life",
-      "file": "index.html",
-      "find": "(e.key===']' || e.key==='}')",
-      "replace": "(e.key===']')",
-      "kills": "the document-tab chords actually reach their handler"
-    },
-    {
       "id": "doc-tab-pin-accepts-the-dead-shape",
       "suite": "unit",
       "why": "the ORIGINAL source pin spelled the unsatisfiable condition and was green over a dead chord for its whole life; the pin must now require both characters or it goes back to certifying nothing",
@@ -3447,15 +2644,6 @@
       "find": "(e.key==='[' || e.key==='{')",
       "replace": "(e.key==='[')",
       "kills": "document tabs: strip is gated on workspaceDir"
-    },
-    {
-      "id": "task-checkbox-unnamed",
-      "suite": "browser",
-      "why": "without the aria-label Chromium reports role=checkbox name=\"\" and a screen-reader user meets a list of identical unnamed boxes with no way to tell which to-do each one ticks",
-      "file": "index.html",
-      "find": " aria-label=\"${escQ(taskName || 'To-do')}\"",
-      "replace": "",
-      "kills": "a to-do checkbox announces which to-do it ticks"
     },
     {
       "id": "task-checkbox-named-after-the-whole-line",
@@ -3467,15 +2655,6 @@
       "kills": "a to-do checkbox is named after its own to-do"
     },
     {
-      "id": "chooser-drawn-as-a-verdict",
-      "suite": "browser",
-      "why": "the shipped defect: isBoolPill fires on a comparison anywhere, so the guide's own {= if(stock>0, price, 0)} rendered a cross for an out-of-stock item and announced \"false\" over a price of 0",
-      "file": "index.html",
-      "find": "const isBoolPill = (fresh === 0 || fresh === 1) && !isChooser",
-      "replace": "const isBoolPill = (fresh === 0 || fresh === 1)",
-      "kills": "a chooser pill shows the value it picked"
-    },
-    {
       "id": "chooser-if-not-word-boundaried",
       "suite": "unit",
       "why": "without the word boundary any name ending in \"if\" (gif, diff) reads as a chooser and stops being a verdict, which is the same over-broad match this fix exists to narrow",
@@ -3483,24 +2662,6 @@
       "find": "return e.includes('?') || /\\bif\\s*\\(/i.test(e);",
       "replace": "return e.includes('?') || /if\\s*\\(/i.test(e);",
       "kills": "a chooser answers with the value it picked"
-    },
-    {
-      "id": "zoom-mints-a-point-and-keeps-it",
-      "suite": "browser",
-      "why": "the shipped defect: render() minted a child for an empty viewport and nothing removed it, so zooming into a childless point and straight back out grew the document by an empty point, with no pushUndo and autosaved into the reader's file",
-      "file": "index.html",
-      "find": "  if (focusedId !== _lastViewport) { dropProvisionalChild(_lastViewport); _lastViewport = focusedId; }\n",
-      "replace": "",
-      "kills": "zooming into a childless point does not leave a point behind"
-    },
-    {
-      "id": "zoom-cleanup-eats-a-real-point",
-      "suite": "browser",
-      "why": "without the _provisional mark the cleanup cannot tell render's point from one the reader made with Enter, and removing an empty child the reader created is a worse bug than the one being fixed",
-      "file": "index.html",
-      "find": "  if (!only || !only._provisional) return null;",
-      "replace": "  if (!only) return null;",
-      "kills": "zooming into a childless point does not leave a point behind"
     },
     {
       "id": "zoom-cleanup-trusts-the-mark",
@@ -3521,15 +2682,6 @@
       "kills": "#1580 every door that discards or fills"
     },
     {
-      "id": "provisional-drop-hand-list-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: Ctrl+K, Query base, Create, Escape and the base is gone",
-      "file": "index.html",
-      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
-      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return null;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return null;",
-      "kills": "#1580 a query base built on the point a zoom minted survives the zoom out"
-    },
-    {
       "id": "zoom-cleanup-counts-stamps",
       "suite": "unit",
       "why": "#1613, the reported bug: the removal counts the created/edited stamps, so a zoom point typed into and cleared again (nothing left but the stamps) survives the zoom out",
@@ -3539,15 +2691,6 @@
       "kills": "#1613 the zoom point goes on zoom out only when render minted it"
     },
     {
-      "id": "zoom-cleanup-counts-stamps-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: zoom in, type, leave, clear, leave, zoom out, and the point is still there",
-      "file": "index.html",
-      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
-      "replace": "  if (!isEmptyPoint(only)) return null;",
-      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
-    },
-    {
       "id": "zoom-cleanup-setting-ignored",
       "suite": "unit",
       "why": "#1613: a tested decision core proves nothing if the call site stops passing the reader's setting; hard-wired on, Off removes the point anyway",
@@ -3555,15 +2698,6 @@
       "find": "const only = provisionalToDrop(vp, zoomCleanup);",
       "replace": "const only = provisionalToDrop(vp, true);",
       "kills": "the point render mints for an empty viewport is cleaned up"
-    },
-    {
-      "id": "zoom-cleanup-setting-ignored-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: the menu says Off and zooming out still removes the point",
-      "file": "index.html",
-      "find": "const only = provisionalToDrop(vp, zoomCleanup);",
-      "replace": "const only = provisionalToDrop(vp, true);",
-      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
     },
     {
       "id": "zoom-cleanup-row-gone",
@@ -3593,15 +2727,6 @@
       "kills": "#1613 the setting is a Settings row in the File menu"
     },
     {
-      "id": "zoom-cleanup-not-persisted-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: turn it off, reload, and it is on again",
-      "file": "index.html",
-      "find": "  try { localStorage.setItem(ZOOM_CLEANUP_KEY, zoomCleanup ? 'on' : 'off'); } catch (_) { /* private mode: it still applies for this session */ }\n",
-      "replace": "",
-      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
-    },
-    {
       "id": "zoom-cleanup-not-read-at-boot",
       "suite": "unit",
       "why": "#1613: a choice written and never read back at boot is the same forgotten setting from the other side",
@@ -3609,15 +2734,6 @@
       "find": "try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_) { /* private mode: keep the default */ }",
       "replace": "zoomCleanup = true;",
       "kills": "#1613 the setting is a Settings row in the File menu"
-    },
-    {
-      "id": "zoom-cleanup-not-read-at-boot-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: the stored off is ignored after a reload",
-      "file": "index.html",
-      "find": "try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_) { /* private mode: keep the default */ }",
-      "replace": "zoomCleanup = true;",
-      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
     },
     {
       "id": "zoom-cleanup-silent-toggle",
@@ -3629,15 +2745,6 @@
       "kills": "#1613 the setting is a Settings row in the File menu"
     },
     {
-      "id": "zoom-cleanup-row-unwired",
-      "suite": "browser",
-      "why": "#1613: a row with no handler renders, searches and takes focus perfectly, and does nothing when pressed",
-      "file": "index.html",
-      "find": "document.getElementById('btn-zoomcleanup')?.addEventListener('click', () => setZoomCleanup(!zoomCleanup));",
-      "replace": "",
-      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
-    },
-    {
       "id": "cleared-point-reader-swapped",
       "suite": "unit",
       "why": "#1612: a tested editableText proves nothing if exitEdit stops reading the point through it; innerText reads the placeholder <br> as a newline again",
@@ -3645,15 +2752,6 @@
       "find": "  node.text = editableText(content);\n  node.text = collapseTaskKeywordCollision(node.text);",
       "replace": "  node.text = content.innerText;\n  node.text = collapseTaskKeywordCollision(node.text);",
       "kills": "#1612 census: every editor reads its text back"
-    },
-    {
-      "id": "cleared-point-reader-swapped-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: a point cleared with Backspace saves a newline again",
-      "file": "index.html",
-      "find": "  node.text = editableText(content);\n  node.text = collapseTaskKeywordCollision(node.text);",
-      "replace": "  node.text = content.innerText;\n  node.text = collapseTaskKeywordCollision(node.text);",
-      "kills": "#1612 every editor cleared with the keyboard saves"
     },
     {
       "id": "cleared-base-markdown-reader-swapped",
@@ -3672,15 +2770,6 @@
       "find": "      vp.text = editableText(te);\n      rederiveFromText(vp);",
       "replace": "      vp.text = te.innerText;\n      rederiveFromText(vp);",
       "kills": "#1612 census: every editor reads its text back"
-    },
-    {
-      "id": "cleared-zoom-title-reader-swapped-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: a zoom title cleared with Backspace saves a newline again",
-      "file": "index.html",
-      "find": "      vp.text = editableText(te);\n      rederiveFromText(vp);",
-      "replace": "      vp.text = te.innerText;\n      rederiveFromText(vp);",
-      "kills": "#1612 every editor cleared with the keyboard saves"
     },
     {
       "id": "editor-census-misses-a-new-editor",
@@ -3764,15 +2853,6 @@
       "kills": "#1594 census: every door that fills a point it judges empty"
     },
     {
-      "id": "recipe-fill-before-the-edit-commits-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: Ctrl+K (or any door) and a Patterns recipe on a fresh point, and the recipe is gone",
-      "file": "index.html",
-      "find": "  commitActiveEdit();\n  const cur = (curId",
-      "replace": "  const cur = (curId",
-      "kills": "#1596 a recipe chosen on a blank point fills it in place"
-    },
-    {
       "id": "paste-fill-before-the-edit-commits",
       "suite": "unit",
       "why": "#1595: the spreadsheet paste filled the point it was pasted into while that point was still being edited, and render() wrote the empty buffer over the table's title",
@@ -3780,15 +2860,6 @@
       "find": "      commitActiveEdit();\n      pushUndo();\n      const idx0",
       "replace": "      pushUndo();\n      const idx0",
       "kills": "#1594 census: every door that fills a point it judges empty"
-    },
-    {
-      "id": "paste-fill-before-the-edit-commits-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: a pasted table fills an empty point and its title is gone",
-      "file": "index.html",
-      "find": "      commitActiveEdit();\n      pushUndo();\n      const idx0",
-      "replace": "      pushUndo();\n      const idx0",
-      "kills": "#1595 a pasted table keeps its title"
     },
     {
       "id": "recipe-fill-counts-stamps",
@@ -3818,15 +2889,6 @@
       "kills": "#1596 exitEdit judges the stamp over the excursion"
     },
     {
-      "id": "trigger-blur-stamps-again-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: typing / or @ stamps the point and the recipe lands below it",
-      "file": "index.html",
-      "find": "builderOwn: builderOwnText(node) });",
-      "replace": "builderOwn: null });",
-      "kills": "#1596 a recipe chosen on a blank point fills it in place"
-    },
-    {
       "id": "stamp-carry-never-read",
       "suite": "unit",
       "why": "without the carried text, what the browser leaves in the point (the typing a dismissal hands back, a slash left behind) is judged against the re-entry text and never stamps",
@@ -3836,15 +2898,6 @@
       "kills": "#1596 exitEdit judges the stamp over the excursion"
     },
     {
-      "id": "stamp-carry-never-read-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: /note then Escape leaves /note in the point unstamped",
-      "file": "index.html",
-      "find": "  const carried = _editStampCarry && _editStampCarry.id === node.id ? _editStampCarry.text : null;",
-      "replace": "  const carried = null;",
-      "kills": "#1596 opening the command browser stamps nothing"
-    },
-    {
       "id": "inserted-pill-unstamped",
       "suite": "unit",
       "why": "an inserted pill writes node.text directly and no commit sees it; in Guided only the trigger's blur ever stamped it, so without this it never stamps in any tier",
@@ -3852,15 +2905,6 @@
       "find": "  if (node.text !== prev) stampEdit(node);\n  markDirty();",
       "replace": "  markDirty();",
       "kills": "#1596 exitEdit judges the stamp over the excursion"
-    },
-    {
-      "id": "inserted-pill-unstamped-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: @progress in Guided and in Standard leaves the point unstamped",
-      "file": "index.html",
-      "find": "  if (node.text !== prev) stampEdit(node);\n  markDirty();",
-      "replace": "  markDirty();",
-      "kills": "#1596 opening the command browser stamps nothing"
     },
     {
       "id": "verdict-blind-to-the-browser",
@@ -3879,24 +2923,6 @@
       "find": "function insertSiblingAfter(id) {\n  const parent = parentOf(id);",
       "replace": "function insertSiblingAfter(id) {\n  if (id === '#never') { builderState = { nodeId: id }; openBuilder('@'); }\n  const parent = parentOf(id);",
       "kills": "#1596 census: every door that opens the command browser on a point is driven"
-    },
-    {
-      "id": "template-counts-stamps-driven",
-      "suite": "browser",
-      "why": "why /template keeps ignoreStamps after #1596: a point typed into and cleared again still carries created/edited, and counting them leaves the blank point above the template",
-      "file": "index.html",
-      "find": "  if (isEmptyPoint(cur, { ignoreStamps: true })) parent",
-      "replace": "  if (isEmptyPoint(cur)) parent",
-      "kills": "#1595 a pasted table keeps its title, and a cleared point is blank"
-    },
-    {
-      "id": "action-pill-one-additive-template",
-      "suite": "browser",
-      "why": "the shipped defect: every arithmetic operator described by one additive template, so {hp *= 2} announced 'change hp by * 2' -- the word 'by' says addition while the sign says multiply -- as both the accessible name and the tooltip",
-      "file": "index.html",
-      "find": "  '*=': (t, v) => `multiply ${t} by ${v}`,",
-      "replace": "  '*=': (t, v) => `change ${t} by * ${v}`,",
-      "kills": "an action pill announces the arithmetic it actually does"
     },
     {
       "id": "action-phrase-drops-an-operator",
@@ -3953,22 +2979,31 @@
       "kills": "the service worker caches ONE copy of the shell"
     },
     {
-      "id": "adopt-undeclared-focus-id",
-      "suite": "browser",
-      "why": "connectAdoptExisting passed a restoreFocusId no scope declared: the ReferenceError failed every connect-by-opening while every source pin on the function stayed green",
-      "file": "index.html",
-      "find": "    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });   // renders, marks clean, sets the title",
-      "replace": "    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });   // renders, marks clean, sets the title",
-      "kills": "#839 connecting a folder that already holds this document opens it"
+      "id": "sw-every-navigation-is-the-shell",
+      "suite": "unit",
+      "why": "the shipped defect: every ok navigation in scope was written over the cached index.html, so visiting guide/a.md or an icon made the next offline launch serve Markdown or a PNG as the app",
+      "file": "service-worker.js",
+      "find": "  if (req.mode === 'navigate' && isShellUrl(req.url, self.registration.scope)) {",
+      "replace": "  if (req.mode === 'navigate') {",
+      "kills": "the service worker treats only the app URL as the shell"
     },
     {
-      "id": "nested-dialog-cancel-out-of-scope",
-      "suite": "browser",
-      "why": "#1464's focus return was copied into showNestedDialog, where the builder's searchEl is not in scope: every Escape/Cancel from a CLICKED row threw and focus fell behind the modal, while the Enter-path copy and its mutant stayed green",
-      "file": "index.html",
-      "find": "  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); const searchEl = ioCard.querySelector('.builder-search'); if (searchEl && searchEl.isConnected) searchEl.focus(); };",
-      "replace": "  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };",
-      "kills": "#1464 leaving a dialog opened by clicking a builder row returns focus to the builder, on every member"
+      "id": "sw-shell-url-ignores-path",
+      "suite": "unit",
+      "why": "a predicate that says yes to everything restores the overwrite while the call site still looks guarded",
+      "file": "service-worker.js",
+      "find": "  return path === new URL(scope).pathname || path === new URL(SHELL, scope).pathname;",
+      "replace": "  return path.startsWith(new URL(scope).pathname);",
+      "kills": "the service worker treats only the app URL as the shell"
+    },
+    {
+      "id": "sw-late-refresh-not-extended",
+      "suite": "unit",
+      "why": "the shipped defect: only respondWith extended the event, so once the cache won the race the late waitUntil threw and nothing kept the worker alive for the download and the cache write",
+      "file": "service-worker.js",
+      "find": "      event.waitUntil(net.catch(() => {}));",
+      "replace": "      net.catch(() => {});",
+      "kills": "the navigate handler extends the event on the download"
     },
     {
       "id": "recipe-sel-plain-indexof",
@@ -3989,33 +3024,6 @@
       "kills": "the recipe drop selects through recipeSelRange"
     },
     {
-      "id": "recipe-selection-never-made",
-      "suite": "browser",
-      "why": "the original fault: the recipe drop called a domSelectionForChars that never existed, inside a try that swallowed the ReferenceError, so no recipe ever selected its first value",
-      "file": "index.html",
-      "find": "      if (r) selectLogicalRange(el, r[0], r[1]);",
-      "replace": "      if (r) domSelectionForChars(el, r[0], r[1]);",
-      "kills": "#1267 every recipe drop selects its first value inside the pill, and typing replaces it"
-    },
-    {
-      "id": "recipe-caret-taken-back",
-      "suite": "browser",
-      "why": "without the disarm, closeBuilder's chrome-return fires a frame after insertRecipe and puts the caret back in the point the builder was opened from, so the recipe's point leaves edit mode and nothing is selected",
-      "file": "index.html",
-      "find": "      chromeReturn = null;\n      closeBuilder();\n      insertRecipe(cmd._recipe, pst.nodeId);",
-      "replace": "      closeBuilder();\n      insertRecipe(cmd._recipe, pst.nodeId);",
-      "kills": "#1267 every recipe drop selects its first value inside the pill, and typing replaces it"
-    },
-    {
-      "id": "brace-picker-selection-never-made",
-      "suite": "browser",
-      "why": "the original fault: the { picker called a domSelectionForChars that never existed, so the placeholder was never selected and typing landed in front of it ({Q2d6})",
-      "file": "index.html",
-      "find": "            selectLogicalRange(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
-      "replace": "            domSelectionForChars(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
-      "kills": "#1267 every { picker scaffold selects its placeholder, and typing replaces it"
-    },
-    {
       "id": "undefined-names-gate-unproven",
       "suite": "unit",
       "why": "without --self-test the job can pass while linting nothing (the first draft did exactly that: flat config matched no .html filename and returned a notice instead of findings)",
@@ -4034,15 +3042,6 @@
       "kills": "undefined-name gate: it lints the real app script"
     },
     {
-      "id": "uxp336-click-runs-the-insert",
-      "suite": "browser",
-      "why": "routing a click by the old predicate sends progress/clock/footnote to showNestedDialog, whose insertInlineArtifact IS their insert: a preview put the pill in the point",
-      "file": "index.html",
-      "find": "    const kind = builderPaneKind(cmd);   // UXP-336: a click previews; it never runs a direct insert",
-      "replace": "    const kind = (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) ? 'form' : (cmd.trigger === '@' && cmd.type === 'insert') ? 'dialog' : 'guide';",
-      "kills": "UXP-336 a direct-insert builder row previews on click, and applying inserts it once, on every member"
-    },
-    {
       "id": "uxp336-click-bypasses-the-predicate",
       "suite": "unit",
       "why": "loadPaneForCmd deciding for itself is how click and apply came to disagree about what a dialog is",
@@ -4052,15 +3051,6 @@
       "kills": "UXP-336 both builder doors route through builderPaneKind"
     },
     {
-      "id": "uxp336-apply-strands-the-builder",
-      "suite": "browser",
-      "why": "with the old predicate a direct insert takes the dialog branch: it inserts but the builder stays open and focus sits on the point behind it",
-      "file": "index.html",
-      "find": "    if (builderPaneKind(cmd) === 'dialog') {",
-      "replace": "    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {",
-      "kills": "UXP-336 a direct-insert builder row previews on click, and applying inserts it once, on every member"
-    },
-    {
       "id": "uxp336-apply-bypasses-the-predicate",
       "suite": "unit",
       "why": "applyBuilder deciding for itself is how click and apply came to disagree about what a dialog is",
@@ -4068,15 +3058,6 @@
       "find": "    if (builderPaneKind(cmd) === 'dialog') {",
       "replace": "    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {",
       "kills": "UXP-336 both builder doors route through builderPaneKind"
-    },
-    {
-      "id": "uxp336-action-inserts-nothing",
-      "suite": "browser",
-      "why": "with no action branch, choosing Action button removed the trigger and inserted nothing, from every door",
-      "file": "index.html",
-      "find": "  } else if (id === 'action') {",
-      "replace": "  } else if (id === 'action-removed') {",
-      "kills": "UXP-336 @action from the inline @ menu inserts a working action instead of nothing"
     },
     {
       "id": "family-name-added-without-a-cue",
@@ -4113,15 +3094,6 @@
       "find": "EMPTY_STUB_KEYWORDS.concat(Object.keys(FAMILY_NAME_CUE)).join('|')",
       "replace": "EMPTY_STUB_KEYWORDS.join('|')",
       "kills": "#1213: an empty-bodied keyword pill is consumed, not left as raw leaking braces"
-    },
-    {
-      "id": "deck-cue-unspoken",
-      "suite": "browser",
-      "why": "classified as an ordinary pick, {deck: a | b | c} gets a preview instead of the cue: nothing marks it and nothing is announced",
-      "file": "index.html",
-      "find": "  if (familyNameAttempt(body)) return 'invalid';",
-      "replace": "  ;",
-      "kills": "#1538 {deck: …} teaches the mode and never becomes a pill"
     },
     {
       "id": "search-vars-default-snapshot",
@@ -4223,33 +3195,6 @@
       "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
     },
     {
-      "id": "reopen-shifts-inbox-slots",
-      "suite": "browser",
-      "why": "the #1582 defect driven end to end: Ctrl+Alt+3, Save, Open, and the chord for inbox 3 no longer names the point",
-      "file": "index.html",
-      "find": "const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));",
-      "replace": "const slots = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
-      "kills": "#1582 an inbox set past an empty slot keeps its number through Save and Open"
-    },
-    {
-      "id": "census-inbox-reader-compacts",
-      "suite": "browser",
-      "why": "the round-trip census must see the document field that motivated it",
-      "file": "index.html",
-      "find": "const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));",
-      "replace": "const slots = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
-      "kills": "#1582 census: every document and point field toOpml saves"
-    },
-    {
-      "id": "census-colw-reader-compacts",
-      "suite": "browser",
-      "why": "the same defect on a sibling sparse array (base column widths, px|null per column): the census reaches point fields too",
-      "file": "index.html",
-      "find": "if (Array.isArray(a)) n.colW = a;",
-      "replace": "if (Array.isArray(a)) n.colW = a.filter(x => x != null);",
-      "kills": "#1582 census: every document and point field toOpml saves"
-    },
-    {
       "id": "clipboard-copy-raw-write",
       "suite": "unit",
       "why": "#1585, the reported defect: copySelection wrote the clipboard raw, swallowed the rejection and flashed success regardless. The census must see a door that bypasses writeClipboard",
@@ -4293,15 +3238,6 @@
       "find": "  wrote.then(ok => { if (!ok) flashError(clipboardFailMessage('cut', count, MOD)); });",
       "replace": "  wrote.then(() => {});",
       "kills": "cut holds the points before it removes them"
-    },
-    {
-      "id": "clipboard-reporter-claims-success-driven",
-      "suite": "browser",
-      "why": "#1585 driven: a reporter that says the hint whatever the write did is the reported false success, at every door at once",
-      "file": "index.html",
-      "find": "    if (ok) flashHint(hint);\n    else flashError(fail || clipboardFailMessage());",
-      "replace": "    flashHint(hint);",
-      "kills": "every copy door says what the clipboard did"
     },
     {
       "id": "fsa-route-reads-presence",
@@ -4358,24 +3294,6 @@
       "kills": "every save gate READS the learned capability"
     },
     {
-      "id": "fsa-route-reads-presence-driven",
-      "suite": "browser",
-      "why": "#1583 driven: a route read from presence keeps the Save row, the Reopen line and no nudge on a refused profile. (Reverting saveFile alone is NOT a mutant here: saveAsFile's own fsaOk gate still downloads, so the two gates are each other's backstop.)",
-      "file": "index.html",
-      "find": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk }); }",
-      "replace": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk: hasFSA }); }",
-      "kills": "a refused picker is asked once"
-    },
-    {
-      "id": "fsa-refusal-not-learned-driven",
-      "suite": "browser",
-      "why": "#1583 driven: a refusal that teaches nothing reopens the refused picker and repeats the error on every Save",
-      "file": "index.html",
-      "find": "    if (outcome === 'refused') fsaOk = false;",
-      "replace": "    if (outcome === 'refused') {}",
-      "kills": "a refused picker is asked once"
-    },
-    {
       "id": "picker-guard-removed",
       "suite": "unit",
       "why": "#1583: without the in-flight flag a second picker reaches the browser, whose 'File picker already active' NotAllowedError reads as a refusal and turns Save into a download until reload",
@@ -4410,15 +3328,6 @@
       "find": "        if (picked.outcome === 'refused') { flashError(pickerRefusedMessage('saving',",
       "replace": "        if (picked.outcome !== 'cancelled') { flashError(pickerRefusedMessage('saving',",
       "kills": "every caller acts only on a refusal"
-    },
-    {
-      "id": "picker-guard-removed-driven",
-      "suite": "browser",
-      "why": "#1583 driven: two Saves back to back with the first picker still open; without the flag the second opens another picker",
-      "file": "index.html",
-      "find": "  if (_pickerInFlight) return { ok: false, error: null, outcome: 'busy' };\n",
-      "replace": "",
-      "kills": "a second Save while the picker is open is busy"
     },
     {
       "id": "chip-keyboard-twin-removed",
@@ -4466,24 +3375,6 @@
       "kills": "#1586 every click-only control built from a div or span"
     },
     {
-      "id": "chip-keyboard-twin-removed-driven",
-      "suite": "browser",
-      "why": "#1586 driven: with the twin gone, Enter on a chip leaves the field untouched while the mouse fills it",
-      "file": "index.html",
-      "find": "    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });\n",
-      "replace": "",
-      "kills": "#1586 an insert-dialog chip does from Enter and Space exactly what it does from the mouse"
-    },
-    {
-      "id": "var-card-roving-removed-driven",
-      "suite": "browser",
-      "why": "#1586 driven: without the roving handler the arrows do not move between Known variables cards",
-      "file": "index.html",
-      "find": "      roveTo(cardEls[at], cardEls[to]);\n",
-      "replace": "",
-      "kills": "#1586 the Known variables cards are one Tab stop"
-    },
-    {
       "id": "keyword-commit-promoted-anyway",
       "suite": "unit",
       "why": "#1591: the reported bug, restored. Promotion stops asking whether a keyword committed, so {meter: a | b} is announced as staying plain text and then frozen into a pill reading \"meter: a\"",
@@ -4527,15 +3418,6 @@
       "find": "  if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];",
       "replace": "  if (deckMode) return 'A deck needs a list to deal from: try {shuffle: a | b | c}.';",
       "kills": "#1591 a reserved keyword with a tail its parser rejects stays text"
-    },
-    {
-      "id": "keyword-commit-promoted-anyway-driven",
-      "suite": "browser",
-      "why": "#1591 driven: what is announced as the } lands and what is done on exit are two moments no source pin spans; without the promotion guard {oracle: a | b | c} becomes a pill reading \"oracle: a\"",
-      "file": "index.html",
-      "find": "  if (keywordCommitted(body)) return null;\n",
-      "replace": "",
-      "kills": "#1591 a keyword with a tail its parser rejects stays text as announced"
     },
     {
       "id": "colonless-phrase-commits-again",
@@ -4682,15 +3564,6 @@
       "kills": "#1584 the link-token grammar is spelled once"
     },
     {
-      "id": "paste-door-skips-parser-driven",
-      "suite": "browser",
-      "why": "#1584: the same, seen where it matters: the caret no longer lands in the pasted token's caption slot",
-      "file": "index.html",
-      "find": "    const tok = parseLinkToken(text);",
-      "replace": "    const tok = null;",
-      "kills": "#1584 a pasted lone link token leaves the caret in its caption slot"
-    },
-    {
       "id": "paste-not-parseMLlines",
       "suite": "unit",
       "why": "#1584: a multi-line paste built some other way than the function its tests pin, the splitPastedPoints shape",
@@ -4716,15 +3589,6 @@
       "find": "  if (!isBoolPill && !m.fmt && !opts.preview && isLongDecimal(display)) _longDecimalShown = display;",
       "replace": "  if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display);",
       "kills": "#1584 every load-cores"
-    },
-    {
-      "id": "nudge-fired-by-renderer-driven",
-      "suite": "browser",
-      "why": "#1584: the same, seen where it matters: the formula dialog's preview spends the once-ever tip on a pill that is not on the page",
-      "file": "index.html",
-      "find": "  if (!isBoolPill && !m.fmt && !opts.preview && isLongDecimal(display)) _longDecimalShown = display;",
-      "replace": "  if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display);",
-      "kills": "#1584 the decimals tip is said by the page"
     },
     {
       "id": "nudge-unsaid-by-base-paint",
@@ -4772,15 +3636,6 @@
       "kills": "#1584 every load-cores"
     },
     {
-      "id": "embed-island-not-read",
-      "suite": "browser",
-      "why": "#1584: the export's reader is the browser's parser plus restoreEmbeddedDoc; this is the round trip the deleted regex twin stood in for",
-      "file": "index.html",
-      "find": "  if (!opml) return;   // no embed → a normal doc, nothing to restore or report",
-      "replace": "  return;",
-      "kills": "#1584 a self-contained export opens as the document it was saved from"
-    },
-    {
       "id": "late-read-goes-unseen",
       "suite": "unit",
       "why": "#1609: a test reading a module-level const declared BELOW it throws a TDZ ReferenceError when run alone, which is how every mutant's guard runs; the census must see one in the real file, not only in its probe",
@@ -4826,15 +3681,6 @@
       "kills": "#1614 every door that writes the reader"
     },
     {
-      "id": "paste-target-unjudged-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: alpha pasted with beta onto a fresh point is left unstamped",
-      "file": "index.html",
-      "find": "  if (editStampVerdict({ text: content.dataset.prevText, prevText: began }).stamp) stampEdit(node);\n",
-      "replace": "",
-      "kills": "#1614 every paste door stamps the points it writes as typing does"
-    },
-    {
       "id": "pasted-points-unstamped",
       "suite": "unit",
       "why": "#1614, the reported defect: the points a multi-line paste builds never pass through a commit that sees their text change",
@@ -4842,15 +3688,6 @@
       "find": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n",
       "replace": "",
       "kills": "#1614 every door that writes the reader"
-    },
-    {
-      "id": "pasted-points-unstamped-driven",
-      "suite": "browser",
-      "why": "the same regression, driven: beta and every nested outline point come out unstamped",
-      "file": "index.html",
-      "find": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n",
-      "replace": "",
-      "kills": "#1614 every paste door stamps the points it writes as typing does"
     },
     {
       "id": "table-paste-below-unstamped",
@@ -5033,33 +3870,6 @@
       "kills": "#1617 census: every paste listener"
     },
     {
-      "id": "held-paste-edit-unwired-driven",
-      "suite": "browser",
-      "why": "#1617, the reported defect, driven: Ctrl+C then Ctrl+V in a point gives a broken pill and drops the note and the property",
-      "file": "index.html",
-      "find": "  if (isHeldClipboardText(text, nodeClipboard)) {\n    pasteFromNodeClipboard(node.id, 'edit');\n    return;\n  }\n",
-      "replace": "",
-      "kills": "#1617 copied points pasted while a point is being edited"
-    },
-    {
-      "id": "field-ctrl-v-ungated-driven",
-      "suite": "browser",
-      "why": "#1617 sibling, driven: Ctrl+V in the search box, the command browser, a base cell and the File menu pastes the held points into the outline",
-      "file": "index.html",
-      "find": "  if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null && !fieldOwnsClipboard) {",
-      "replace": "  if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {",
-      "kills": "#1617 copied points pasted while a point is being edited"
-    },
-    {
-      "id": "held-plan-fills-anything-driven",
-      "suite": "browser",
-      "why": "#1617, driven: a point with only a note is replaced by the copy and its note is lost",
-      "file": "index.html",
-      "find": "  if (from === 'edit' && isEmptyPoint(kids[at], { ignoreStamps: true })) return { index: at, remove: 1 };",
-      "replace": "  if (from === 'edit') return { index: at, remove: 1 };",
-      "kills": "#1617 copied points pasted while a point is being edited"
-    },
-    {
       "id": "uxp339-restore-reenters-a-left-edit",
       "suite": "unit",
       "why": "without the editing guard, checkInlineHighlight's caret-restore frame focuses a point the user just left and re-enters its edit, undoing the commit",
@@ -5067,15 +3877,6 @@
       "find": "    if (!content.dataset.editing) return;\n    content.focus();",
       "replace": "    content.focus();",
       "kills": "UXP-339 the closing-brace caret restore never re-enters an edit that has ended"
-    },
-    {
-      "id": "uxp339-restore-steals-focus-back",
-      "suite": "browser",
-      "why": "the #1501 CI flake, made deterministic: leave a point in the same frame as its closing brace and the restore pulls focus back, so no cue and no promoted pill",
-      "file": "index.html",
-      "find": "    if (!content.dataset.editing) return;\n    content.focus();",
-      "replace": "    content.focus();",
-      "kills": "UXP-339 leaving a point right after typing a closing brace stays left"
     },
     {
       "id": "task-checkbox-bypasses-done-writer",
@@ -5195,24 +3996,6 @@
       "kills": "#1661 beforeprint commits an open point"
     },
     {
-      "id": "print-allowlist-gone-driven",
-      "suite": "browser",
-      "why": "#1661: the driven check sees the chrome on paper when the allowlist is dropped",
-      "file": "index.html",
-      "find": "  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
-      "replace": "  .ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
-      "kills": "#1661 printing shows only the outline"
-    },
-    {
-      "id": "print-hook-gone-driven",
-      "suite": "browser",
-      "why": "#1661: the driven check sees the open point still editing on paper when beforeprint does nothing",
-      "file": "index.html",
-      "find": "window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });",
-      "replace": "window.addEventListener('beforeprint', () => {});",
-      "kills": "#1661 printing shows only the outline"
-    },
-    {
       "id": "root-doors-write-again",
       "suite": "unit",
       "why": "#1658: the view bar stops gating the writing doors on doorWritesShow, so + Total writes into the invisible document root",
@@ -5232,7 +4015,6 @@
     },
     {"id": "seltb-door-bubble-phase", "suite": "unit", "why": "#1542: registered in the bubble phase, the point's own Enter splits it before the toolbar runs", "file": "index.html", "find": "  else setSelTbActive(items, step.to);\n}, true);", "replace": "  else setSelTbActive(items, step.to);\n});", "kills": "#1542 the toolbar door is wired"},
     {"id": "seltb-hide-keeps-arrows", "suite": "unit", "why": "#1542: a hidden toolbar that keeps the roving state swallows the next arrow", "file": "index.html", "find": "function hideSelTb() { endSelTbKbd(); selTb", "replace": "function hideSelTb() { selTb", "kills": "#1542 the toolbar door is wired"},
-    {"id": "seltb-door-unwired", "suite": "browser", "why": "#1542: Alt+F10 no longer reaches the toolbar", "file": "index.html", "find": "  if (active == null) return e.key === 'F10' && e.altKey", "replace": "  if (active == null) return e.key === 'F11' && e.altKey", "kills": "#1542 Alt+F10 reaches the selection toolbar"},
     {"id": "1657-dialog-preview-global", "suite": "unit", "why": "the preview pin asserts a call site is PRESENT; reverting the Edit expression preview to the doc-wide map must turn it red", "file": "index.html", "find": "const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included", "replace": "const vars = collectVars();   // #1657: the pill's scope, props and position included", "kills": "#1657 the var pill and the math dialog preview read the pill scope"},
     {"id": "1657-var-pill-no-props", "suite": "unit", "why": "the declaration pill must keep reading its point's props; dropping them is the panel #8 'tot = ?'", "file": "index.html", "find": "evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars)", "replace": "evalMath(v.expr, declVars)", "kills": "#1657 the var pill and the math dialog preview read the pill scope"},
     {
@@ -5298,10 +4080,31 @@
     {"id": "slice4-rename-no-stale-check", "suite": "unit", "why": "a rename must not write over a point that changed while the cell was open", "file": "index.html", "find": "  if (src.text !== srcText) {   // changed underneath", "replace": "  if (false) {   // changed underneath", "kills": "row ops census"},
     {"id": "slice4-move-loses-focus", "suite": "browser", "why": "after Alt+Up the caret must follow the moved point; dropping the refocus leaves it on body", "file": "index.html", "find": "  qbaseFocusRow(node, nid, c);   // follow the point you moved\n", "replace": "", "kills": "the keyboard renames, moves and adds points"},
     {"id": "slice4-move-no-undo", "suite": "browser", "why": "one Ctrl+Z must restore the order after a table move", "file": "index.html", "find": "  pushUndo();\n  mtMoveItem(list.children, mv.from, mv.to);", "replace": "  mtMoveItem(list.children, mv.from, mv.to);", "kills": "the keyboard renames, moves and adds points"},
+    {"id": "slice3-editor-offers-no-picker", "suite": "unit", "why": "the list-scoped editor must hand its keys to the picker; dropping them leaves a door that never opens", "file": "index.html", "find": "pickKeys: node.qbase.scope === 'siblings' ? listColumnKeys(parentOf(node.id)?.children, knownStates(root)) : [],", "replace": "pickKeys: [],", "kills": "the query editor offers the picker on a list-scoped base only"},
+    {"id": "slice3-checks-no-resync", "suite": "unit", "why": "typing a column in the textarea must re-tick its box; without the sync the two stores disagree", "file": "index.html", "find": "      _previewFns.push(sync);\n      queueMicrotask(sync);", "replace": "      queueMicrotask(sync);", "kills": "the query editor offers the picker on a list-scoped base only"},
+    {"id": "slice3-browser-toggle-writes-nothing", "suite": "browser", "why": "a tick must rewrite the columns text; a box that toggles only itself must turn the driven check red", "file": "index.html", "find": "onToggle: (k, on, inputs) => { inputs.cols.value = qbaseColsToggle(inputs.cols.value, k, on); },", "replace": "onToggle: () => {},", "kills": "the query editor picks the columns of a list with checkboxes"},
+    {"id": "slice3-browser-no-resync", "suite": "browser", "why": "the driven reverse door: typing `yield` back into the textarea must re-tick its box", "file": "index.html", "find": "      _previewFns.push(sync);\n      queueMicrotask(sync);", "replace": "      queueMicrotask(sync);", "kills": "the query editor picks the columns of a list with checkboxes"},
+    {"id": "tv2-header-unwired", "suite": "unit", "why": "the header door must be wired; deleting the call leaves an inert header that still renders and still passes a render-only pin", "file": "index.html", "find": "  mtWireQBaseSort(host, node);   // slice 2: the header sorts (same readOnly-surviving placement)\n", "replace": "", "kills": "table view slice 2: the header door is rendered, wired both ways, and writes qbase.sort"},
+    {"id": "tv2-no-aria-sort", "suite": "unit", "why": "the sort state must be announced on the <th>; without aria-sort a screen reader hears no state change", "file": "index.html", "find": "${as ? ` aria-sort=\"${as}\"` : ''}", "replace": "", "kills": "table view slice 2: the header door is rendered, wired both ways, and writes qbase.sort"},
+    {"id": "tv2-no-keyboard-path", "suite": "unit", "why": "the keyboard path must exist alongside mousedown (P3-3); a pointer-only header is unreachable", "file": "index.html", "find": "e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);", "replace": "e.preventDefault(); e.stopPropagation();", "kills": "table view slice 2: the header door is rendered, wired both ways, and writes qbase.sort"},
+    {"id": "tv2-keyboard-drops-focus", "suite": "browser", "why": "after an Enter the rebuild replaces the header; without the refocus focus falls to <body> and the cycle cannot be pressed through", "file": "index.html", "find": "if (refocus) mtHost(node.id)", "replace": "if (false) mtHost(node.id)", "kills": "table view slice 2: a header press and Enter cycle the sort"},
     {"id": "untrusted-arrattr-keyless", "suite": "unit", "why": "a shared file's [null] or keyless sidecar record must be dropped at parse; the collectors and pill renderers read .key off every entry", "file": "index.html", "find": "return Array.isArray(v) ? v.filter(r => r && typeof r === 'object' && typeof r.key === 'string') : [];", "replace": "return Array.isArray(v) ? v : [];", "kills": "untrusted file: arrAttr keeps only object records"},
     {"id": "untrusted-fresh-id-raw", "suite": "unit", "why": "an _id with a quote breaks the 74 raw [data-id=\"...\"] selectors; it must be reassigned at parse", "file": "index.html", "find": "let id = raw && !/[\"\\\\\\x00-\\x1f]/.test(raw) ? raw : uid();", "replace": "let id = raw || uid();", "kills": "untrusted file: arrAttr keeps only object records"},
     {"id": "untrusted-row-boundary-rethrows", "suite": "unit", "why": "the per-row boundary must swallow a throwing pill renderer, or one bad record aborts render(), gets autosaved and bricks every boot", "file": "index.html", "find": "    html = escHtml(node.text);\n  }\n  diceRenderList", "replace": "    throw e;\n  }\n  diceRenderList", "kills": "untrusted file: a throwing pill renderer costs one row"},
     {"id": "untrusted-mdinline-brace-cap", "suite": "unit", "why": "without the depth cap a 5000-deep brace line costs O(n^2) in mdInline's nested pass (20 s+)", "file": "index.html", "find": "if (/\\{[^{}]*\\{/.test(s) && !braceDepthExceeds(s)) {", "replace": "if (/\\{[^{}]*\\{/.test(s)) {", "kills": "untrusted file: a 5000-deep brace line"},
-    {"id": "untrusted-promote-brace-cap", "suite": "unit", "why": "without the depth cap a 5000-deep brace point costs O(n^2) in load-time promotion (20 s+)", "file": "index.html", "find": "if (text.indexOf('{') < 0 || braceDepthExceeds(text)) return false;", "replace": "if (text.indexOf('{') < 0) return false;", "kills": "untrusted file: a 5000-deep brace line"}
+    {"id": "untrusted-promote-brace-cap", "suite": "unit", "why": "without the depth cap a 5000-deep brace point costs O(n^2) in load-time promotion (20 s+)", "file": "index.html", "find": "if (text.indexOf('{') < 0 || braceDepthExceeds(text)) return false;", "replace": "if (text.indexOf('{') < 0) return false;", "kills": "untrusted file: a 5000-deep brace line"},
+    {"id": "doc-swap-open-input-no-restore-point", "suite": "unit", "why": "the <input type=file> Open branch swapping through bare adoptDoc, which left a browser-only document unreachable", "file": "index.html", "find": "try { await adoptDocWithRestorePoint(fromOpml(await file.text()), { fileName: file.name }); }", "replace": "try { adoptDoc(fromOpml(await file.text()), { fileName: file.name }); }", "kills": "File > Open leaves the outgoing document a restore point on both branches"},
+    {"id": "doc-swap-open-picker-no-restore-point", "suite": "unit", "why": "the File System Access Open branch swapping through bare adoptDoc", "file": "index.html", "find": "await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name, fileHandle: newHandle });", "replace": "adoptDoc(fromOpml(text), { fileName: file.name, fileHandle: newHandle });", "kills": "File > Open leaves the outgoing document a restore point on both branches"},
+    {"id": "doc-swap-snapshot-captured-from-slot", "suite": "unit", "why": "a snapshot New/Open stashing AUTOSAVE_KEY, which holds the user's own document, in place of the snapshot", "file": "index.html", "find": "  if (loadedFromEmbed) outgoing = capturePayloadOf(root);\n  else { try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {} }", "replace": "  try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}", "kills": "File \u2192 New leaves the outgoing document a restore point"},
+    {"id": "doc-swap-restore-keeps-undo", "suite": "unit", "why": "Restore earlier version leaving the replaced tree's undo history live", "file": "index.html", "find": "    undoStack.length = 0; redoStack.length = 0;\n    selectedIds.clear(); selAnchorId = null; selFocusId = null;\n    markDirty();", "replace": "    selectedIds.clear(); selAnchorId = null; selFocusId = null;\n    markDirty();", "kills": "Restore earlier version drops the history and selection of the replaced tree"},
+    {"id": "doc-swap-snapshot-writes-slot", "suite": "unit", "why": "a shared snapshot writing AUTOSAVE_KEY and the OPFS copy that the user's own launch boots from", "file": "index.html", "find": "  if (!loadedFromEmbed) {\n    if (hasOPFS) writeOpfsAutosave(payload);", "replace": "  if (true) {\n    if (hasOPFS) writeOpfsAutosave(payload);", "kills": "a shared snapshot does not write the browser autosave slot"},
+    {"id": "flush-markclean-across-edit", "suite": "unit", "why": "a folder write that resolves after a keystroke marked the doc clean, so the debounce skipped the file", "file": "index.html", "find": "    if (outcome === 'clean') markClean();          // 'edited': stays dirty", "replace": "    markClean();          // 'edited': stays dirty", "kills": "the serialize-await-markClean sites gate markClean on writeOutcome"},
+    {"id": "markdirty-no-edit-gen", "suite": "unit", "why": "without the generation bump no write can tell an edit landed during its await", "file": "index.html", "find": "  dirty = true; _editGen++;", "replace": "  dirty = true;", "kills": "the serialize-await-markClean sites gate markClean on writeOutcome"},
+    {"id": "boot-kept-copy-clean", "suite": "unit", "why": "a kept boot copy the file lacks stayed clean, so nothing ever wrote it to the folder", "file": "index.html", "find": "  if (localAhead) markDirty();                           // after the anchor", "replace": "  // localAhead ignored                           // after the anchor", "kills": "reopenWorkspaceDoc marks a kept, newer local copy dirty"},
+    {"id": "agenda-render-debounced", "suite": "unit", "why": "markDirty must schedule the agenda rebuild, not run it per keystroke (collectDueDates walks every point)", "file": "index.html", "find": "  scheduleVarPanelUpdate();\n  scheduleAgendaRender();\n}", "replace": "  scheduleVarPanelUpdate();\n  if (agendaOpen) renderAgenda();\n}", "kills": "agenda strip: markDirty schedules one trailing rebuild"},
+    {"id": "simulate-memoized", "suite": "unit", "why": "a repaint of the same simulate() must reuse its result, not re-run the Monte Carlo", "file": "index.html", "find": "let v = _simMemo.get(key);", "replace": "let v;", "kills": "simulate memo: the same call samples once"},
+    {"id": "simulate-work-cap", "suite": "unit", "why": "a simulate() over the work cap (999d6! x 20000 froze the tab 26 s) must be #ERR before it rolls", "file": "index.html", "find": "if (trials * simDiceCost(terms) > SIM_WORK_MAX) return m;", "replace": "if (false) return m;", "kills": "simulate work cap:"},
+    {"id": "varmap-shared-by-count", "suite": "unit", "why": "the sharing guard asserts the cache HIT happened; resolving afresh per call keeps every value right and must still turn it red", "file": "index.html", "find": "let resolved = idx.maps.get(k);", "replace": "let resolved = null;", "kills": "points between two declarations share one map"},
+    {"id": "varmap-rebuild-on-miss", "suite": "unit", "why": "a point added before the generation bump must make the index rebuild, not read as below everything", "file": "index.html", "find": "(target && !_varDeclIdx.at.has(target))", "replace": "false", "kills": "points between two declarations share one map"}
   ]
 }

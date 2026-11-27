@@ -18,12 +18,23 @@ const CACHE_VERSION = 'pointliner-v5';
 // ONE entry, not two. './' and './index.html' are different URLs holding identical bytes,
 // so caching both made a first visit pull the whole ~3.4 MB document twice over on top of
 // the page load itself — measured at the server, three full transfers for one visit. The
-// navigate handler reads this single entry whichever URL was navigated to.
+// navigate handler reads this single entry whichever of the two was navigated to.
 // Relative URL: the app is served from a subpath (/pointliner/), so the SW scope is its
 // own directory and './index.html' resolves inside it.
 const SHELL = './index.html';
 // Not required. One missing optional asset must never cost the offline shell (see install).
 const OPTIONAL = ['./icon.svg'];
+
+// Is this navigation the APP, or some other file the host serves inside our scope? The repo is
+// published whole, so README.md, guide/*.md and the icons all live under this scope too, and a
+// direct visit to one of them is a navigation like any other. Treating it as the shell wrote a
+// Markdown file or a PNG over the cached index.html, which the next offline launch then served
+// as the app. Only the scope root and SHELL itself are the app. The query is ignored on purpose:
+// the manifest's start_url and share_target both open './', the latter as './?append=...'.
+function isShellUrl(url, scope) {
+  const path = new URL(url).pathname;
+  return path === new URL(scope).pathname || path === new URL(SHELL, scope).pathname;
+}
 
 // How long a navigation waits for the network before serving the cached shell instead.
 // THIS IS THE CASE .catch() CANNOT SEE. A dead link rejects and the fallback runs; a link
@@ -70,17 +81,23 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;            // never intercept non-GET (nothing to cache)
-  // waitUntil throws once the event has settled, which is exactly the late-refresh case
-  // below (the network answering after the cached copy was already served). Best-effort by
-  // design: if the SW is torn down first, the next open simply refreshes it instead.
+  // waitUntil throws once the event is no longer active: dispatch over AND no lifetime promise
+  // pending. The navigate handler keeps one pending on `net` for exactly that reason, so the
+  // late refresh below (the network answering after the cached copy was already served) can
+  // still register its write. Best-effort by design: if the SW is torn down first, the next
+  // open simply refreshes it instead.
   const keepAlive = (p) => { try { event.waitUntil(p); } catch (_) { /* event already done */ } };
 
+  // Only a navigation to the app itself (isShellUrl) takes the branch below. Any other in-scope
+  // file falls through to the plain path at the bottom: it never touches the shell entry, and
+  // offline it fails as that file rather than being answered with the app under the wrong URL.
+  //
   // Navigations (opening the app, refresh): NETWORK-FIRST — the live build wins whenever it
   // answers in time, and the cache is reached only when the network fails or exceeds
   // NET_TIMEOUT_MS. This is the freshness model described up top. Do not "fix" this into
   // cache-first: that is what traps an installed copy on a stale build. The timeout is not
   // cache-first — the network still leads and still wins every healthy race.
-  if (req.mode === 'navigate') {
+  if (req.mode === 'navigate' && isShellUrl(req.url, self.registration.scope)) {
     event.respondWith((async () => {
       const net = fetch(req).then(async (res) => {
         if (!res || !res.ok) return res;      // a real error goes through untouched
@@ -110,7 +127,13 @@ self.addEventListener('fetch', (event) => {
       // mid-download then rejects it with nobody listening — an unhandled rejection inside the
       // worker, in exactly the flaky-connection case this handler exists for. This attaches a
       // handler without consuming the promise: the catch arm below can still fall back to it.
-      net.catch(() => {});
+      // It is ALSO the lifetime extension, and it must be made here, synchronously during the
+      // dispatch (no await precedes it). respondWith only extends the event until ITS promise
+      // settles, which is the moment the cache wins the race; after that the event is inactive
+      // and a waitUntil made from the late download throws, leaving nothing to keep the worker
+      // alive for the body and the cache write. Pending on `net`, the event is still active
+      // when the download finishes and keepAlive registers the write.
+      event.waitUntil(net.catch(() => {}));
       let timer;
       try {
         return await Promise.race([
@@ -129,7 +152,8 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
-  // Everything else (the icon, etc.): cache-first, fall back to network.
+  // Everything else (the icon, etc., and navigations to non-shell files such as guide/*.md):
+  // cache-first, fall back to network.
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req))
   );
