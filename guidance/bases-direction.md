@@ -116,10 +116,17 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   `showAll`/`sort` precedent; not a new per-base node field, so §7c's trigger does not fire) and
   columns from `inferRowShape`. It narrows WHICH points a query base reads; it adds no predicate over
   owned rows and no view library (`base-views-vision.md` §0.6), and nothing turns into a base (§6).
-  Row ops and title writes stay suppressed (`query-base-proposal.md` §3); lifting that for
-  list-scoped bases is the proposal's slice 4 and an owner call. Slice 3 (2026-11-26) adds a
-  column picker to that base's query editor: checkboxes over the list's property keys that rewrite
-  the same columns text (same spec, same storage; no new syntax).
+  **Slice 4 shipped 2026-11-26 (owner call, verbatim: "table should be able to add, reorder and
+  rename points").** For a LIST-SCOPED base only, in its Table view: the Name cell renames the point
+  (title part only, `retitleText`; pills, tags and props kept), Tab past the last cell or the row
+  menu adds a point at the end of the list (the `+ Add` builder), and Alt+Up/Down, the row menu or
+  the handle drag moves a point within the list. This lifts `query-base-proposal.md` §3's row-op
+  suppression and Phase C's never-`node.text` line for that kind of base and no other: search bases,
+  and every query base's Board/Cards/Calendar, stay as they were. A sorted table refuses moves and
+  says to clear the sort. One undo per write, a stale-row check, an announced commit. Deleting rows
+  stays out (deleting a point is the outline's job). Detail: `table-view-proposal.md` slice 4.
+  Slice 3 (2026-11-26) adds a column picker to that base's query editor: checkboxes over the
+  list's property keys that rewrite the same columns text (same spec, same storage; no new syntax).
 
   **Per-column number format shipped (ε, 2026-07-24).** A Number column can format as
   money/measure/percent, not only group thousands: `node.colFmt` (OPML `_colfmt`) holds a

@@ -684,6 +684,10 @@ Implemented:
   `listColumnKeys` key (shape order, then sparse `dataPropKeys`), an `openInsertDialog`
   `checks` field that fronts the columns textarea through `qbaseColsHave`/`qbaseColsToggle`
   (the text stays the one store; typing re-ticks the boxes).
+  **Slice 4 (owner call 2026-11-26)**: a list-scoped base renames (`pointTitleParts` /
+  `retitleText`, Name cell), adds (`qbaseAddRow`, the `+ Add` builder through `createPromotedRow`,
+  which now pushes undo) and moves (`qbaseMoveRow` over `listMoveIndices`, refused when sorted by
+  `qbaseMoveBlock`) its list's points; doors in `mtWireQBaseRows` / `showQRowPanel`.
   **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);

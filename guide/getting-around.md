@@ -307,6 +307,18 @@ Undo removes it. A search typed into its strip narrows the rows within the list 
 **Only the points in this list** and give a search to widen it to the whole document. The table
 follows its list: duplicate or move the section and the copy shows its own points.
 
+Because its rows are the list's own points, this table also grows, reorders and renames them:
+
+- **Rename:** type in a **Name** cell. Only the name changes; the point's tags, pills and properties stay.
+- **Add:** press `Tab` past the last cell, or open a row's menu (click its handle, or `Shift+F10` on a
+  cell) and choose **At the end of the list**. The new point gets the list's tags; type its name, then
+  `Tab` to its values.
+- **Reorder:** `Alt+Up` / `Alt+Down` on a row, **Move up** / **Move down** in the row menu, or drag the
+  handle. The points move in the outline too. A sorted table keeps its sort, so clear the sort first.
+- Every change is one step for **Undo**. To delete a point, delete it in the outline.
+
+A query base with a search (not a list) still edits property cells only.
+
 The title column stays a link (click it to jump to the point) and formula columns stay computed.
 
 To choose which properties show, click the strip and tick or untick them under **Show as columns**.

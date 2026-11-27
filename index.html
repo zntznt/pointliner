@@ -12415,9 +12415,48 @@ function qbaseColList(cols) {
 // Phase C: a column WRITES THROUGH when it projects a plain property key — the exact
 // complement of queryTableRows' special forms ('title' is a link, a '=' projection is
 // computed per row; both stay read-only). Pure.
-function qbaseFieldWritable(field) {
+// table-view-proposal.md slice 4 (owner call 2026-11-26): on a LIST-SCOPED base the rows are the
+// points of its own list, so the title column writes too (it renames the point, title part only).
+function qbaseFieldWritable(field, scope) {
   const f = String(field || '').trim();
-  return !!f && f !== 'title' && f[0] !== '=';
+  return !!f && (f === 'title' ? scope === 'siblings' : f[0] !== '=');
+}
+// Slice 4: a list-scoped base's rows can be added, moved and renamed; a search base has no list. Pure.
+function qbaseListScoped(qbase) { return qbase?.scope === 'siblings'; }
+// Why a list table's rows cannot move, or null. Reorder means document order, so a sorted table
+// refuses and says how to get back to it. Pure.
+function qbaseMoveBlock(qbase) {
+  const s = qbase?.sort;
+  if (!s || !Number.isInteger(s.col)) return null;
+  const cd = qbaseColList(qbase.cols)[s.col];
+  const name = cd ? (cd.name || cd.field).trim() : 'a column';
+  return `This table is sorted by ${name}. Clear the sort in Edit query to move points.`;
+}
+// Where a moved row lands in its list: {from, to} indices into the list's children for moving `nid`
+// to `targetNid`'s place, or null. A row steps past its neighbour IN THE TABLE, so a filtered table
+// skips the points it does not show and the outline changes exactly as the grid does. Pure.
+function listMoveIndices(kidIds, nid, targetNid) {
+  const from = kidIds.indexOf(nid), to = kidIds.indexOf(targetNid);
+  return from < 0 || to < 0 || from === to ? null : { from, to };
+}
+// The part of a point's text its Name cell renames: after the block prefix, checkbox and leading
+// state word (head), up to the first pill token, #tag or line break (tail, kept verbatim). Pure.
+function pointTitleParts(text, states) {
+  const t = String(text ?? '');
+  let head = textBlockPrefix(t);
+  head += (t.slice(head.length).match(/^\s*(?:[-*+] )?\[[ xX/\-]\]\s*/) || [''])[0];
+  const st = rowLeadState(t.slice(head.length), states);
+  if (st) head += t.slice(head.length).match(/^\s*#[A-Z][A-Z0-9_-]*\s*/)[0];
+  const body = t.slice(head.length);
+  const m = /\[\[|(?<![a-zA-Z0-9\[])#[\w-]|\n/.exec(body);
+  const cut = m ? m.index : body.length;
+  return { head, title: body.slice(0, cut).trim(), tail: body.slice(cut) };
+}
+// The text with its title part replaced; pills, tags, the prefix and later lines stay as they were. Pure.
+function retitleText(text, title, states) {
+  const { head, tail } = pointTitleParts(text, states);
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim();
+  return head + t + (t && tail && tail[0] !== '\n' ? ' ' : '') + tail;
 }
 function qbaseModel(node) {
   const cfg = JSON.stringify(node.qbase);
@@ -12544,10 +12583,11 @@ const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more']
 const BASE_CARD_CLASSES = ['bv-card', 'gv-card'];
 function baseRefocusSelector(d) {
   if (!d) return null;
-  if (d.nid) return `tr[data-nid="${d.nid}"] .node-link`;
+  const int = v => Number.isInteger(v) && v >= 0;
+  // slice 4: a list table's cells (its Name cell has no link) come back to the same column of the same point
+  if (d.nid) return int(d.qc) ? `tr[data-nid="${d.nid}"] .mt-cell[data-c="${d.qc}"]` : `tr[data-nid="${d.nid}"] .node-link`;
   if (BASE_VIEW_KINDS.includes(d.view)) return `.mt-view-btn[data-view="${d.view}"]`;
   if (BASE_CHROME_CLASSES.includes(d.chrome)) return `.${d.chrome}`;
-  const int = v => Number.isInteger(v) && v >= 0;
   if (int(d.r) && int(d.c)) return `.mt-cell[data-r="${d.r}"][data-c="${d.c}"]`;
   if (int(d.r) && BASE_CARD_CLASSES.includes(d.card)) return `.${d.card}[data-r="${d.r}"]`;
   return null;
@@ -12558,7 +12598,10 @@ function baseRefocusSelector(d) {
 function baseFocusDescriptor(el) {
   if (!el || !el.closest) return null;
   const row = el.closest('tr[data-nid]');
-  if (row && row.dataset.nid) return { nid: CSS.escape(row.dataset.nid) };
+  if (row && row.dataset.nid) {
+    const qc = !el.closest('.node-link') && el.closest('td.mt-cell[data-c]');
+    return qc ? { nid: CSS.escape(row.dataset.nid), qc: +qc.dataset.c } : { nid: CSS.escape(row.dataset.nid) };
+  }
   const vb = el.closest('.mt-view-btn');
   if (vb && vb.dataset.view) return { view: vb.dataset.view };
   for (const c of BASE_CHROME_CLASSES) if (el.closest('.' + c)) return { chrome: c };
@@ -13752,6 +13795,14 @@ function mtWireQBaseEdit(host, node) {
   const SEL = 'td.mt-qcell';
   host.addEventListener('focusin', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
+    if (qbaseColList(node.qbase.cols)[+cell.dataset.c]?.field.trim() === 'title') {
+      // slice 4: the Name cell edits the title part only; the text it started from is the stale check
+      const src = nodeById(cell.closest('tr[data-nid]')?.dataset.nid);
+      cell.dataset.srcText = src ? src.text : '';
+      cell.textContent = src ? pointTitleParts(src.text, knownStates(root)).title : '';
+      cell.dataset.enterVal = cell.textContent;
+      return;
+    }
     // show the raw value for editing (the display may be a role chip)
     const _qRawTok = mtModelRead(node).rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
     cell.dataset.tokenVal = _qRawTok;                       // #1467
@@ -13782,7 +13833,9 @@ function mtWireQBaseEdit(host, node) {
       const col = cells.filter(x => x.dataset.c === cell.dataset.c);
       next = col[col.indexOf(cell) + (e.shiftKey ? -1 : 1)];
     }
-    if (next) next.focus(); else cell.blur();
+    if (next) next.focus();
+    else if (e.key === 'Tab' && !e.shiftKey && qbaseListScoped(node.qbase)) qbaseAddRow(node);
+    else cell.blur();
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
@@ -13792,12 +13845,14 @@ function mtWireQBaseEdit(host, node) {
     delete cell.dataset.enterVal;
     const _tok = cell.dataset.tokenVal; delete cell.dataset.tokenVal;   // #1467
     const c = +cell.dataset.c;
+    const nid = cell.closest('tr[data-nid]')?.dataset.nid;
+    const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
+    const srcText = cell.dataset.srcText; delete cell.dataset.srcText;
+    if (field === 'title') { qbaseRenameCommit(host, node, cell, nid, raw, was, srcText); return; }
     // #1467: repaint from the TOKEN, or the pill would come back as literal `{2d6}` text
     if (raw === was) { cell.innerHTML = mtCellHtml(node, _tok !== undefined ? _tok : was, c); return; }
-    const nid = cell.closest('tr[data-nid]')?.dataset.nid;
     const src = nid ? nodeById(nid) : null;
-    const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
-    if (!src || !field || !qbaseFieldWritable(field)) { cell.innerHTML = mtCellHtml(node, was, c); return; }
+    if (!src || !field || !qbaseFieldWritable(field, node.qbase.scope)) { cell.innerHTML = mtCellHtml(node, was, c); return; }
     // #1123: a reserved date routes through its validated writer, like every other date door.
     // Before this, a cell wrote straight to setProp: `friday` was stored raw (the point kept a due
     // chip and vanished from every date view), and `today+7` was stored LITERALLY, re-anchoring
@@ -13828,6 +13883,124 @@ function mtWireQBaseEdit(host, node) {
     // synchronous render inside focusout; it would steal the next-clicked cell's focus).
     scheduleVarBaseRender(host);
   });
+  if (qbaseListScoped(node.qbase)) mtWireQBaseRows(host, node);
+}
+
+// ── table-view-proposal.md slice 4: a list table's rows are its list's points ──────────────────
+// Owner call 2026-11-26: "table should be able to add, reorder and rename points." Only for a
+// LIST-SCOPED base (a search base has no list to add into or order to keep). Each write is one undo
+// step, re-checks the row against the live list first, says what it did, and keeps the caret where
+// the user is. The doors mirror the authored base's: the row handle's menu, Shift+F10 on a cell,
+// Alt+Up/Down to move, Tab past the last cell to add, and dragging the handle.
+function qbaseTitleHtml(nid) {
+  const src = nid && nodeById(nid);
+  return escHtml(src ? stripCaptionTags(displayText(src)) : '');
+}
+function qbaseRowLabel(src) { return (src && displayText(src) || '(untitled)').slice(0, 40); }
+function qbaseRenameCommit(host, node, cell, nid, raw, was, srcText) {
+  const src = nid ? nodeById(nid) : null;
+  const repaint = () => { cell.innerHTML = qbaseTitleHtml(nid); };
+  if (!src || raw === was) { repaint(); return; }
+  if (src.text !== srcText) {   // changed underneath (an undo, a reroll): never write over it
+    repaint();
+    flashHint(`"${qbaseRowLabel(src)}" changed while you were renaming it, so nothing was written. Try again.`);
+    return;
+  }
+  const old = qbaseRowLabel(src);
+  pushUndo();
+  src.text = retitleText(src.text, raw, knownStates(root));
+  promoteInlineShorthand(src);   // a {...} typed into the name becomes its pill, as in the outline
+  markDirty();
+  repaint();
+  flashHint(raw ? `Renamed "${old}" to "${qbaseRowLabel(src)}". Undo puts the old name back.`
+                : `Cleared the name of "${old}". Undo puts it back.`);
+  scheduleVarBaseRender(host);
+}
+function qbaseFocusRow(node, nid, c) {
+  const host = mtHost(node.id);
+  const tr = host?.querySelector(`tr[data-nid="${CSS.escape(nid)}"]`);
+  (tr?.querySelector(`.mt-cell[data-c="${c}"]`) || tr?.querySelector('.mt-cell'))?.focus();
+  return !!tr;
+}
+// Commit a cell being edited before a row op reshapes the grid under it.
+function qbaseCommitOpenCell() { document.activeElement?.closest?.('td.mt-qcell')?.blur(); }
+function qbaseMoveRow(node, nid, dir, c = 0, targetNid) {
+  const list = parentOf(node.id);
+  if (!list || !qbaseListScoped(node.qbase)) return;
+  const block = qbaseMoveBlock(node.qbase);
+  if (block) { flashHint(block); return; }
+  qbaseCommitOpenCell();
+  const rowIds = qbaseModel(node).qids.slice(1);   // fresh: the row may have moved or left since
+  const i = rowIds.indexOf(nid);
+  if (i < 0) { flashHint('That point is no longer in this table.'); return; }
+  const mv = listMoveIndices(list.children.map(k => k.id), nid, targetNid ?? rowIds[i + dir]);
+  if (!mv) { if (!targetNid) flashHint(dir < 0 ? 'Already the first point in this table.' : 'Already the last point in this table.'); return; }
+  pushUndo();
+  mtMoveItem(list.children, mv.from, mv.to);
+  markDirty(); render();
+  qbaseFocusRow(node, nid, c);   // follow the point you moved
+  const up = mv.to < mv.from;
+  flashHint(`Moved "${qbaseRowLabel(nodeById(nid))}" ${up ? 'up' : 'down'} in ${qbaseRowLabel(list)}. Undo restores the order.`);
+}
+function qbaseAddRow(node, c = 0) {
+  const list = parentOf(node.id);
+  if (!list || !qbaseListScoped(node.qbase)) return;
+  qbaseCommitOpenCell();
+  // the + Add door's own builder: the list's shared tags, to-do box and property keys, values empty
+  const n = createPromotedRow(list, buildRow(inferRowShape(list.children, knownStates(root)), {}, ''), false);
+  if (!n) return;
+  const shown = qbaseFocusRow(node, n.id, c);
+  if (!shown) focusNode(n.id);
+  flashHint(shown ? `Added a point to ${qbaseRowLabel(list)}. Type its name, then Tab to its values. Undo removes it.`
+                  : `Added a point to ${qbaseRowLabel(list)}. This table's search does not show it, so it is in the outline below.`);
+}
+function showQRowPanel(node, nid, anchorEl, c = 0) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const rowIds = qbaseModel(node).qids.slice(1), i = rowIds.indexOf(nid);
+  const block = qbaseMoveBlock(node.qbase);
+  addSection('Add a point');
+  addItem('At the end of the list', { onApply: () => qbaseAddRow(node, c) });
+  addSection(block ? 'Move point (sorted)' : 'Move point', true);
+  addItem('Move up',   { disabled: !!block || i <= 0, title: block || '', onApply: () => qbaseMoveRow(node, nid, -1, c) });
+  addItem('Move down', { disabled: !!block || i < 0 || i >= rowIds.length - 1, title: block || '', onApply: () => qbaseMoveRow(node, nid, 1, c) });
+  mtOpenMenu(panel, anchorEl);
+}
+function mtWireQBaseRows(host, node) {
+  host.addEventListener('keydown', e => {
+    const cell = e.target.closest('tr[data-nid] td.mt-cell'); if (!cell || e.defaultPrevented) return;
+    const nid = cell.closest('tr').dataset.nid, c = +cell.dataset.c;
+    if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault(); e.stopPropagation();
+      qbaseMoveRow(node, nid, e.key === 'ArrowUp' ? -1 : 1, c);
+    } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      e.preventDefault(); e.stopPropagation();
+      showQRowPanel(node, nid, cell, c);
+    }
+  });
+  const rowOf = el => el.closest('tr[data-nid]')?.dataset.nid;
+  host.addEventListener('click', e => {
+    const rh = e.target.closest('.mt-rowh[data-r]'); if (!rh) return;
+    e.stopPropagation();
+    const nid = rowOf(rh); if (nid) showQRowPanel(node, nid, rh);
+  });
+  let from = null;
+  host.addEventListener('dragstart', e => {
+    const rh = e.target.closest('.mt-rowh[data-r]'); from = rh ? rowOf(rh) : null;
+    if (!from) return;
+    if (qbaseMoveBlock(node.qbase)) { e.preventDefault(); flashHint(qbaseMoveBlock(node.qbase)); from = null; return; }
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+  });
+  host.addEventListener('dragover', e => { if (from && e.target.closest('.mt-rowh[data-r]')) e.preventDefault(); });
+  host.addEventListener('drop', e => {
+    const to = from && rowOf(e.target.closest('.mt-rowh[data-r]') || host);
+    const f = from; from = null;
+    if (!to || to === f) return;
+    e.preventDefault();
+    qbaseMoveRow(node, f, 0, 0, to);
+  });
+  host.addEventListener('dragend', () => { from = null; });
 }
 
 // Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
@@ -14530,7 +14703,10 @@ function buildTableWidget(node, readOnly) {
   h += '<tr class="mt-headrow" data-r="0">';
   // The row-handle gutter is a pointer-only UI strip (drag/click), not data — hidden
   // from AT (the keyboard door to row ops is the cell context menu, Shift+F10).
-  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head" aria-hidden="true"></th>';
+  // Slice 4: a list table's rows are points, so it carries the same row handle as an authored base.
+  const _qList = !!node.qbase && qbaseListScoped(node.qbase);
+  const _rowh = !readOnly || _qList;
+  if (_rowh) h += '<th class="mt-rowh mt-rowh-head" aria-hidden="true"></th>';
   for (let c=0;c<nc;c++) {
     const ch0 = computedCells.has('0,'+c);
     const nm = model.rows[0][c] || '';
@@ -14567,7 +14743,7 @@ function buildTableWidget(node, readOnly) {
     h += `<tr data-r="${r}"${nid ? ` data-nid="${escQ(nid)}"` : ''}${isTotal ? ' class="mt-total-row"' : ''}>`;
     // The Calculate footer row is data-only (computed) and stays pinned last — no
     // reorder/menu handle; a plain inert stub keeps the column count aligned.
-    if (!readOnly) h += isTotal
+    if (_rowh) h += isTotal
       ? '<th class="mt-rowh mt-rowh-foot" aria-hidden="true"></th>'
       : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options" aria-hidden="true"></th>`;
     for (let c=0;c<nc;c++) {
@@ -14590,8 +14766,10 @@ function buildTableWidget(node, readOnly) {
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        const qEdit = _qFields && qbaseFieldWritable(_qFields[c]);
-        h += `<td class="mt-cell${aCls(effectiveAlign(model.aligns[c], _colRoles[c]))}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c, _colRoles)}</td>`;
+        const qEdit = _qFields && qbaseFieldWritable(_qFields[c], node.qbase.scope);
+        const qTitle = qEdit && _qFields[c] === 'title';   // slice 4: the Name cell renames its point
+        const qTip = qTitle ? 'Edits rename the point' : `Edits write to the matching point's ${escQ(_qFields?.[c])} property`;
+        h += `<td class="mt-cell${aCls(effectiveAlign(model.aligns[c], _colRoles[c]))}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="${qTip}"`:ro)}>${qTitle ? qbaseTitleHtml(nid) : mtCellHtml(node, model.rows[r][c]||'', c, _colRoles)}</td>`;
       }
     }
     h += '</tr>';
@@ -45436,11 +45614,13 @@ const GUIDE = [
     ] },
   { id:'list-table-view', cat:'todos',
     title:'See a list as a table',
-    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, click a column's header (or press Enter on it): once for ascending, again for descending, a third time for document order. To filter or pick columns, click the strip above the table: Sort rows also takes a column name and desc, Show as columns has a box per property to tick or untick (formula columns are still typed under Columns), a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
+    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). Type in a Name cell to rename the point: its tags and pills stay.\n\nTo add a point, press Tab past the last cell, or open a row's menu (its handle, or Shift+F10 on a cell) and choose At the end of the list. To reorder, press Alt+Up or Alt+Down on a row, use Move up or Move down in the same menu, or drag the row's handle: the points move in the list too. A sorted table keeps its order, so clear the sort first. Delete a point in the outline.\n\nTo sort, click a column's header (or press Enter on it): once for ascending, again for descending, a third time for document order. To filter or pick columns, click the strip above the table: Sort rows also takes a column name and desc, Show as columns has a box per property to tick or untick (formula columns are still typed under Columns), a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
     related:['querybase','bases-overview','properties','addrow'],
     examples:[
       { syn:'\u002b Table view',            desc:'at the end of a list whose points share properties', ctl:'Show list as table view' },
       { syn:'Menu → Show list as table view', desc:'the same, from the keyboard (Shift+F10 on the list or a row)' },
+      { syn:'Alt+↑ / Alt+↓', desc:'on a table row: move the point within its list' },
+      { syn:'Tab', desc:'on the table\u2019s last cell: add a point at the end of the list' },
     ] },
   { id:'query', cat:'todos', covers:['query','count'], related:['querybase','search-ops','progress','recipe-dashboard','workspace-documents'],
     title:'Embedded queries',
@@ -46876,15 +47056,16 @@ function rowNoun(contextNode, shape) {
   const tags = (shape && shape.sharedTags) || [];
   return tags.length ? tags[tags.length - 1] : 'item';
 }
-function createPromotedRow(parentNode, text) {
+function createPromotedRow(parentNode, text, focus = true) {
   if (!parentNode) return null;
+  pushUndo();                             // one Ctrl/Cmd+Z takes the new point away
   const n = mkNode(text);                 // canonical fresh point carrying the built shorthand text
   parentNode.children.push(n);            // append to the end of the shaped list
   promoteInlineShorthand(n);              // {prop}/{date} → live props (tags stay as #text); mirrors the load path
   buildIndex(root, null);                 // re-index so searches/rollups see the new point (like stampTemplate)
   markDirty();
   render();
-  focusNode(n.id);
+  if (focus) focusNode(n.id);
   return n;
 }
 // #1240 phase 2 DOM half: stamp a blank scaffold of a structured sibling under its heading. Clones the

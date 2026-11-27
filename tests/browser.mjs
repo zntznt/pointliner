@@ -9491,7 +9491,7 @@ test('table view: + Table view shows a typed list as a grid that edits its point
     const hosts = document.querySelectorAll('.md-table-host');
     const h = hosts[0];
     return { hosts: hosts.length, strip: h?.querySelector('.mt-qbase-expr')?.textContent,
-      rows: [...(h?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+      rows: [...(h?.querySelectorAll('tr') || [])].map(tr => [...tr.children].filter(td => !td.classList.contains("mt-rowh")).map(td => td.innerText.trim())),
       hint: document.getElementById('flash-hint')?.textContent || '' };
   });
   assert.equal(grid.hosts, 1, 'one grid appeared');
@@ -9502,7 +9502,7 @@ test('table view: + Table view shows a typed list as a grid that edits its point
   assert.equal(await doorsOn('Crops'), 0, 'and the list no longer offers a second one');
 
   // Edit through the grid with real keys: the POINT changes.
-  await pg.locator('td.mt-qcell').first().click();
+  await pg.locator('td.mt-qcell[data-c="1"]').first().click();
   await pg.keyboard.press('Control+a'); await type('7'); await pg.keyboard.press('Tab');
   await pg.waitForTimeout(600);
   const beds = await pg.evaluate(() => nodeById(root.children[0].children.find(n => /Kale/.test(n.text)).id)
@@ -9540,7 +9540,7 @@ test('table view: Shift+F10 on a row reaches "Show list as table view" at the to
   await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
   const r = await pg.evaluate(() => ({
     first: root.children[0].qbase || null,
-    rows: [...(document.querySelector('.md-table-host')?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+    rows: [...(document.querySelector('.md-table-host')?.querySelectorAll('tr') || [])].map(tr => [...tr.children].filter(td => !td.classList.contains("mt-rowh")).map(td => td.innerText.trim())),
   }));
   assert.equal(r.first?.scope, 'siblings', 'a list-scoped table view is the document\'s first point');
   assert.deepEqual(r.rows, [['Name', 'honey'], ['Hive 1', '18'], ['Hive 2', '11']]);
@@ -9590,7 +9590,7 @@ test('table view slice 2: a header press and Enter cycle the sort, announced, fo
       const h = document.querySelector('.md-table-host');
       const base = root.children[0].children[0];
       return { sort: base.qbase.sort || null,
-        names: [...h.querySelectorAll('tr[data-nid]')].map(tr => tr.children[0].innerText.trim()),
+        names: [...h.querySelectorAll('tr[data-nid]')].map(tr => tr.querySelector('.mt-cell').innerText.trim()),   // past the slice 4 row handle
         aria: [...h.querySelectorAll('th[aria-sort]')].map(th => th.dataset.c + ':' + th.getAttribute('aria-sort')),
         strip: h.querySelector('.mt-qbase-sort')?.textContent || null,
         active: document.activeElement?.closest?.('.mt-qsort') ? 'header ' + document.activeElement.dataset.c
@@ -9690,6 +9690,134 @@ test('#1666 a running order of h:mm times totals 2:05, and the h:mm box can be u
   } finally { await pg.close(); }
 });
 
+// table-view-proposal.md slice 4 (owner call 2026-11-26: "table should be able to add, reorder and
+// rename points"). A list table's rows ARE its list's points, so the grid renames, moves and adds them.
+// Driven with real keys, asserting what MOVED: the point's text and its place in the list, where focus
+// landed (activeElement), and that one Ctrl+Z reverses each write.
+const SLICE4_OPML = '<?xml version="1.0"?><opml version="2.0"><head><title>Farm</title></head><body>' +
+  '<outline text="## Crops"><outline text="Kale #veg {prop beds: 4}"/><outline text="Chard {prop beds: 2}"/>' +
+  '<outline text="Beans {prop beds: 3}"/></outline></body></opml>';
+async function slice4Table(pg) {
+  // every flash is logged, so a later tip cannot hide the announcement a write made
+  await pg.evaluate(o => { const f = flashHint; window.__hints = []; flashHint = (m, ...r) => { __hints.push(String(m)); return f(m, ...r); };
+    adoptDoc(fromOpml(o)); render(); }, SLICE4_OPML);
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => { const l = root.children[0]; createListTableView(l, listTableSpec(l, knownStates(root)).cols); });
+  await pg.waitForTimeout(400);
+}
+const s4 = {
+  list: () => root.children[0].children.filter(n => !n.qbase).map(n => n.text.trim()),
+  focus: () => { const a = document.activeElement; return { nid: a?.closest('tr[data-nid]')?.dataset.nid || null,
+    c: a?.dataset?.c ?? null, title: a?.closest('tr[data-nid]') ? nodeById(a.closest("tr[data-nid]").dataset.nid)?.text.trim() : null }; },
+  hint: () => __hints.join(' | '),
+};
+const cellOf = (pg, title, c) => pg.locator('.md-table-host tr[data-nid]').filter({ hasText: title }).first()
+  .locator(`td.mt-cell[data-c="${c}"]`);
+
+test('table view slice 4: the keyboard renames, moves and adds points, and undo reverses each', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await slice4Table(pg);
+    const type = s => pg.keyboard.type(s, { delay: 5 });
+    const ev = fn => pg.evaluate(fn);
+    const blurUndo = async () => { await ev(() => document.activeElement?.blur()); await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400); };
+
+    // Rename: the Name cell edits the title part; the tag and the property stay.
+    await cellOf(pg, 'Kale', 0).click();
+    assert.equal(await ev(() => document.activeElement.textContent), 'Kale', 'the cell shows the title part to edit');
+    await pg.keyboard.press('Control+a'); await type('Curly kale'); await pg.keyboard.press('Tab');
+    await pg.waitForTimeout(500);
+    assert.deepEqual(await ev(s4.list), ['Curly kale #veg', 'Chard', 'Beans'], 'renamed, tag kept');
+    assert.equal(await ev(() => root.children[0].children[1].props.find(p => p.key === 'beds').val), '4', 'property kept');
+    assert.match(await ev(s4.hint), /Renamed "Kale #veg" to "Curly kale #veg"/);
+    assert.equal((await ev(s4.focus)).c, '1', 'Tab moved on to the next cell of the row');
+    await blurUndo();
+    assert.deepEqual(await ev(s4.list), ['Kale #veg', 'Chard', 'Beans'], 'one undo puts the old name back');
+
+    // Move: Alt+Up on Chard swaps it above Kale in the LIST, and focus follows it.
+    await cellOf(pg, 'Chard', 1).click();
+    await pg.keyboard.press('Alt+ArrowUp'); await pg.waitForTimeout(400);
+    assert.deepEqual(await ev(s4.list), ['Chard', 'Kale #veg', 'Beans'], 'the point moved in the outline');
+    let f = await ev(s4.focus);
+    assert.deepEqual([f.title, f.c], ['Chard', '1'], 'focus stayed on the moved point, same column');
+    assert.match(await ev(s4.hint), /Moved "Chard" up in Crops/);
+    await pg.keyboard.press('Alt+ArrowUp'); await pg.waitForTimeout(300);
+    assert.match(await ev(s4.hint), /Already the first point/, 'a move past the edge says why');
+    assert.ok(await ev(() => !!root.children[0].children[0].qbase), 'the table itself stays the first point');
+    await blurUndo();
+    assert.deepEqual(await ev(s4.list), ['Kale #veg', 'Chard', 'Beans'], 'one undo restores the order');
+
+    // Add: Tab past the last cell makes a point at the end of the list and lands in its Name cell.
+    await cellOf(pg, 'Beans', 1).click();
+    await pg.keyboard.press('Tab'); await pg.waitForTimeout(500);
+    f = await ev(s4.focus);
+    assert.equal(f.c, '0', 'the caret is in the new row');
+    assert.equal((await ev(s4.list)).length, 4, 'a point was added to the list');
+    assert.match(await ev(s4.hint), /Added a point to Crops/);
+    await type('Peas'); await pg.keyboard.press('Tab'); await type('6'); await pg.keyboard.press('Enter');
+    await pg.waitForTimeout(500);
+    const peas = await ev(() => { const n = root.children[0].children.at(-1); return [n.text.trim(), n.props.find(p => p.key === 'beds')?.val]; });
+    assert.deepEqual(peas, ['Peas', '6'], 'typing the new row fills the point and its property');
+    for (let i = 0; i < 3; i++) await blurUndo();
+    assert.deepEqual(await ev(s4.list), ['Kale #veg', 'Chard', 'Beans'], 'undo walks the add back out');
+
+    // Sorted: reorder means document order, so the move refuses and says how to get it back.
+    await ev(() => { const b = root.children[0].children[0]; b.qbase.sort = { col: 1, dir: 'asc' }; markDirty(); render(); });
+    await pg.waitForTimeout(300);
+    await cellOf(pg, 'Kale', 1).click();
+    await pg.keyboard.press('Alt+ArrowUp'); await pg.waitForTimeout(300);
+    assert.deepEqual(await ev(s4.list), ['Kale #veg', 'Chard', 'Beans'], 'a sorted table does not move points');
+    assert.match(await ev(s4.hint), /sorted by beds\. Clear the sort/);
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+test('table view slice 4: the row handle and Shift+F10 open the same row menu', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await slice4Table(pg);
+    const ev = fn => pg.evaluate(fn);
+    const items = () => ev(() => [...document.querySelectorAll('#mt-colpanel.on [role=menuitem]')].map(i => i.innerText.trim()));
+    // pointer: the handle of Kale's row
+    const kaleId = await ev(() => root.children[0].children[1].id);
+    await pg.hover(`tr[data-nid="${kaleId}"]`);
+    await pg.click(`tr[data-nid="${kaleId}"] th.mt-rowh`);
+    await pg.waitForTimeout(250);
+    assert.deepEqual(await items(), ['At the end of the list', 'Move up', 'Move down']);
+    await pg.locator('#mt-colpanel [role=menuitem]', { hasText: 'Move down' }).dispatchEvent('mousedown');
+    await pg.waitForTimeout(400);
+    assert.deepEqual(await ev(s4.list), ['Chard', 'Kale #veg', 'Beans'], 'the menu moved the point');
+    // keyboard: Shift+F10 on a cell, focus lands inside the menu, Enter adds at the end
+    await cellOf(pg, 'Beans', 1).click();
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(300);
+    assert.equal(await ev(() => document.activeElement?.getAttribute('role')), 'menuitem', 'focus is in the menu');
+    assert.equal(await ev(() => document.activeElement.innerText.trim()), 'At the end of the list');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+    assert.equal((await ev(s4.list)).length, 4, 'the keyboard added a point');
+    assert.ok((await ev(s4.focus)).nid, 'and the caret is in the table, on the new row');
+    // the + Add door shares the add path, so it is one undo step too (it had none)
+    await ev(() => document.activeElement?.blur());
+    await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400);
+    assert.equal((await ev(s4.list)).length, 3, 'undo removes the added point');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+test('table view slice 4: a list table with row handles stays on a 320px and a 375px screen', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    for (const w of [320, 375]) {
+      await pg.setViewportSize({ width: w, height: 800 });
+      await slice4Table(pg);
+      const r = await pg.evaluate(() => ({ scroll: document.documentElement.scrollWidth > innerWidth,
+        handles: document.querySelectorAll('.md-table-host th.mt-rowh[data-r]').length }));
+      assert.equal(r.handles, 3, 'each row carries its handle');
+      assert.equal(r.scroll, false, 'the page does not scroll sideways at ' + w + 'px');
+    }
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
 // table-view-proposal.md slice 3 -- choose a list's table columns by ticking. Before: the only way
 // to drop `yield` or add the one-off `note` was to edit the columns textarea's mini-language by hand.
 // Driven both ways: the strip is clicked open, Tab reaches a box and Space ticks it (focus and
@@ -9741,7 +9869,7 @@ test('table view: the query editor picks the columns of a list with checkboxes, 
     await pg.keyboard.press('Enter');   // Enter on a box saves, like every dialog field
     await pg.waitForTimeout(500);
     const grid = await pg.evaluate(() => [...document.querySelector('.md-table-host').querySelectorAll('tr')]
-      .map(tr => [...tr.children].map(td => td.innerText.trim())));
+      .map(tr => [...tr.children].filter(td => !td.classList.contains("mt-rowh")).map(td => td.innerText.trim())));
     assert.deepEqual(grid, [['Name', 'beds', 'note'], ['Kale', '4', 'slugs'], ['Chard', '2', '']], 'the grid shows the ticked columns');
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }

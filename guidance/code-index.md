@@ -746,6 +746,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `qbaseSourceText` — The strip's words for where a query base's rows come from: its search, or for a list's table view
 - `qbaseColList` — The rendered-column list: entries with a usable field, exactly as queryTableRows
 - `qbaseFieldWritable` — Phase C: a column WRITES THROUGH when it projects a plain property key — the exact
+- `qbaseListScoped` — Slice 4: a list-scoped base's rows can be added, moved and renamed; a search base has no list. Pure.
+- `qbaseMoveBlock` — Why a list table's rows cannot move, or null. Reorder means document order, so a sorted table
+- `listMoveIndices` — Where a moved row lands in its list: {from, to} indices into the list's children for moving `nid`
+- `pointTitleParts` — The part of a point's text its Name cell renames: after the block prefix, checkbox and leading
+- `retitleText` — The text with its title part replaced; pills, tags, the prefix and later lines stay as they were. Pure.
 - `qbaseModel`
 - `mtModel`
 - `_mtModelReadCacheVer` — Read-only twin of mtModel for PAINT paths (widget build, cell patch, focusin): they
@@ -844,6 +849,18 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mtSortRows`
 - `mtSortBase` — The one-shot sort door (saved-views-proposal SV-1): a DATA operation — the new order
 - `mtWireQBaseEdit` — QP-2 Phase C: write-through cells. A query base's plain-property cells edit the SOURCE
+
+## table-view-proposal.md slice 4: a list table's rows are its list's points
+
+- `qbaseTitleHtml` — Owner call 2026-11-26: "table should be able to add, reorder and rename points." Only for a
+- `qbaseRowLabel`
+- `qbaseRenameCommit`
+- `qbaseFocusRow`
+- `qbaseCommitOpenCell` — Commit a cell being edited before a row op reshapes the grid under it.
+- `qbaseMoveRow`
+- `qbaseAddRow`
+- `showQRowPanel`
+- `mtWireQBaseRows`
 - `mtWireQBaseSort` — Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
 - `qbaseSortByHeader`
 
