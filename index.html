@@ -13777,7 +13777,7 @@ function mtSortOrder(rows, col, dir, role, seqs, lastDataRow) {
     // path keeps Calculate's parseFloat, because with no role there is no numeric display
     // to agree with, and Calculate is the command it was disagreeing with.
     if (role === 'number') { const n = Number(v); return Number.isFinite(n) ? n : null; }
-    if (numericCol) return cellNum(v);
+    if (numericCol) return parseDuration(v) ?? cellNum(v);   // #1706: a 1:30 property value sorts as 1.5 hours, as its total reads it
     if (role === 'date') return parseDueDate(v);
     if (role === 'status') { const i = seqOrder.get(v.toUpperCase()); return i === undefined ? null : i; }
     return v.toLowerCase();
@@ -19771,7 +19771,7 @@ function termMatchesNode(term, node, seqs, vars, links,
     // to due:/start:, so a date string is deliberately not numeric here.
     return (node.props || []).some(p => {
       if (p.key.toLowerCase() !== term.key) return false;
-      const n = Number(String(p.val).trim());
+      const v = String(p.val).trim(), n = parseDuration(v) ?? Number(v);   // #1706: 1:30 compares as 1.5 hours
       if (!Number.isFinite(n)) return false;
       switch (term.op) {
         case '>':  return n >  term.num;
