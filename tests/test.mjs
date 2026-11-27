@@ -23900,6 +23900,25 @@ test('#1310 sectionToCsvRows: rows become a grid (union of property columns, val
   assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
 });
 
+test('#1699 CSV export: values match the chip (reserved date keys stay raw) and formula cells are defused', () => {
+  const head = c.mkNode('## Log');
+  const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: v }); return n; };
+  head.children.push(
+    mk('=HYPERLINK("http://e.x","c")', [['when', '10/12/2024'], ['Date', '3/4'], ['cost', '60 * 3.50']]),
+    mk('-cmd', [['due', '1/2'], ['delta', '-5']]),
+  );
+  const rows = host(c.sectionToCsvRows(head, {}));
+  assert.deepEqual(rows[1].slice(1), ['10/12/2024', '3/4', '210', '', ''], 'a date key keeps its text (any case); a formula key still computes');
+  assert.deepEqual(rows[2].slice(1), ['', '', '', '1/2', '-5'], 'due is a date key too; a negative number stays a number');
+  const csv = c.rowsToCsv(rows);
+  assert.ok(csv.includes('"\'=HYPERLINK(""http://e.x"",""c"")"'), 'a formula title is prefixed with a quote');
+  for (const t of ['+1+1', '-1+1', '@SUM(A1)', '\t=1', '\r=1', '=1']) assert.equal(c.csvCell(t)[0] === '"' ? c.csvCell(t)[1] : c.csvCell(t)[0], "'", `${JSON.stringify(t)} is defused`);
+  for (const t of ['-5', '+3', '-2.5', 'a=b', '']) assert.equal(c.csvCell(t), t, `${JSON.stringify(t)} is untouched`);
+  // the chip and the CSV share one exemption, so they cannot drift apart again
+  assert.equal(c.propFormulaValue('when', '10/12/2024'), null);
+  assert.equal(c.propFormulaValue('ratio', '3/4'), 0.75, 'a non-reserved key computes, as #1317 shows it');
+});
+
 test('#1310 the CSV export is wired (a section with property rows gets a bullet-menu door)', () => {
   assert.ok(_src.includes("label:'Export table to CSV'"), 'the bullet menu offers a CSV export');
   assert.ok(_src.includes('sectionToCsvRows(node, knownStates(root)) ?'), 'the door only appears when there is a table to export');
@@ -32520,8 +32539,8 @@ test('#1656 convert() knows area', () => {
 
 test('#1656 every row-formula reader passes the row, not an empty scope', () => {
   assert.ok(fnBody(_src, 'childPropNumber').includes('propExprValue(raw0, rowPropVars(child))'), 'the rollup reader');
-  assert.ok(fnBody(_src, 'buildPropsArea').includes('propExprValue(val, rowPropVars(node))'), 'the chip shows the computed value');
-  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propExprValue(p.val, rowPropVars(c))'), 'CSV freezes the computed value');
+  assert.ok(fnBody(_src, 'buildPropsArea').includes('propFormulaValue(propK, val, rowPropVars(node))'), 'the chip shows the computed value');
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propFormulaValue(k, p.val, rowPropVars(c))'), 'CSV freezes the computed value');
   assert.ok(fnBody(_src, 'inferRowShape').includes('propExprValue(raw, rowPropVars(n))'), 'the shape types the column');
   // census: no caller may drop back to the scope-less form, which reads gal * ppg as text
   const bare = [..._src.matchAll(/propExprValue\(([^()]*)\)/g)].filter(m => !m[1].includes(','));

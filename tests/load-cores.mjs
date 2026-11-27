@@ -215,7 +215,7 @@ export function loadCores() {
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
     'importCellValue', 'importKeyName', 'importSplitRow', 'sniffDelimited', 'tableToPoints',   // #1296: spreadsheet paste → props
-    'csvCell', 'rowsToCsv', 'sectionToCsvRows',   // #1310: CSV export (the OUT mirror; inverse of importSplitRow)
+    'csvCell', 'rowsToCsv', 'sectionToCsvRows', 'propFormulaValue',   // #1310: CSV export (the OUT mirror; inverse of importSplitRow)
     'markdownVaultToPoints', 'resolveWikilinks',   // #1265 PR 2: multi-file vault import + wikilink resolution
     'builderPaneKind',   // UXP-336: what a builder row's pane shows, and so what applying it does
     'recipeToNodes', 'recipeSelRange',   // #1267: snippet/pattern palette (PATTERN_RECIPES data is parsed from _src in the pins); where a recipe's first value sits
