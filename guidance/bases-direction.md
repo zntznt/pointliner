@@ -315,7 +315,7 @@ row as **dotted document variables**: row "Orc" + column "HP" → `orc.hp`, read
 An optional base name namespaces every projection (`monsters.orc.hp` — the prefix replaces the bare form).
 
 - **Projection** is the pure `varBaseDefs(node)` (memoized per generation — `varBaseDefsMemo`, the
-  `_varMapAtCache` self-invalidating precedent), consumed at TWO gather hooks: `collectVars`'s walk and
+  `_posVarMapCache` self-invalidating precedent), consumed at TWO gather hooks: `collectVars`'s walk and
   `collectNodeDecls` (which covers both positional walks — `varMapAt` and `renderPosVarMaps`). A variable
   base is therefore a **declaration site at its document position**: nearest-above wins, last-wins on
   name collisions, exactly like `{name := …}` declarations.

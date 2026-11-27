@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "mcp__github__create_pull_request|mcp__github__update_pull_request",
+        "matcher": "^mcp__.*github.*__(create|update)_pull_request$",
         "hooks": [
           {
             "type": "command",

@@ -66,9 +66,15 @@ async function fresh() {
   page.on('console', m => { if (m.type() === 'error') pageErrors.push('console: ' + m.text()); });
   await page.goto(APP);
   await page.waitForSelector('#outline', { timeout: 10000 });
-  await page.waitForTimeout(700);
+  // Boot is settled once the OPFS reconcile has released autosave and the Welcome chooser's rAF has
+  // put focus on its card: Escape is handled on that overlay, so pressing it any earlier is lost.
+  await waitFn(page, () => _opfsReconciled && _welcomeOpen
+    && document.getElementById('io-card').contains(document.activeElement), null, 10000);
   await page.keyboard.press('Escape');          // dismiss the first-run welcome
-  await page.waitForTimeout(250);
+  // dismissWelcome closes the card and focuses the first point synchronously; two frames let the
+  // deferred paint work it queued land before the check starts.
+  await waitFn(page, () => !_welcomeOpen && document.activeElement.matches('.node-content'), null, 10000);
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   return page;
 }
 
@@ -452,11 +458,94 @@ test('#1440 a view toggle writes nothing; a real edit still writes', { skip: ski
 
   // The half that must NOT regress: a genuine edit still reaches disk.
   await pg.evaluate(() => { root.children[0].children[0].text += ' extra'; markDirty(); });
-  await pg.waitForTimeout(1400);
+  await waitFn(pg, () => window.__writes.length > 0, null, 15000).catch(() => {});
   const afterEdit = await pg.evaluate(() => window.__writes.length);
   assert.equal(afterEdit, 1, 'a real text edit must still write the document');
   const wrote = await pg.evaluate(() => /extra/.test(window.__writes[0] || ''));
   assert.ok(wrote, 'and the write must contain the edit, not a stale serialization');
+});
+
+// A keystroke that lands while the folder write is in flight. The write resolved and called
+// markClean(), so the debounce that followed skipped the folder (`workspaceFile && dirty`) and the
+// file never received the keystroke while the chip said saved. The write is held on a promise this
+// test releases, so the keystroke lands inside the await by construction; no timer decides it.
+test('a keystroke during an in-flight folder write stays unsaved and reaches the file next', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body>' +
+      '<outline text="one"/></body></opml>'));
+    focusedId = null; render();
+    window.__writes = []; window.__held = []; window.__anchors = 0;
+    window.safeWriteOpml = (dir, name, opml) => new Promise(r => window.__held.push(() => { window.__writes.push(opml); r(); }));
+    window.anchorWorkspaceFile = async () => { window.__anchors++; };
+    window.refreshOwnDocInIndex = () => {};
+    workspaceDir = { name: 'nb' };
+    workspaceFile = { getFile: async () => ({ lastModified: _wsKnownModified, size: _wsKnownSize }) };
+    fileName = 'notes.opml';
+    root.children[0].text = 'one two'; markDirty(); clearTimeout(autosaveTimer);
+    writeAutosavePayloadNow();             // the debounce body: dirty, so it starts the folder write
+  });
+  await waitFn(pg, () => window.__held.length === 1);
+  await pg.evaluate(() => { root.children[0].text = 'one two three'; markDirty(); clearTimeout(autosaveTimer); });
+  await pg.evaluate(() => window.__held[0]());
+  await waitFn(pg, () => !_wsWriting);
+  const mid = await pg.evaluate(() => ({ dirty, unsaved: unsavedToDisk(), anchors: window.__anchors, wrote: window.__writes.slice() }));
+  assert.equal(mid.wrote.length, 1);
+  assert.ok(!/three/.test(mid.wrote[0]), 'the first write was serialized before the keystroke');
+  assert.equal(mid.dirty, true, 'the file lacks "three", so the document must not be marked saved');
+  assert.equal(mid.unsaved, true, 'and the save state must say so');
+  assert.equal(mid.anchors, 1, 'our write still re-anchors, so the follow-up is not read as an external change');
+
+  await pg.evaluate(() => writeAutosavePayloadNow());   // the debounce the keystroke scheduled
+  await waitFn(pg, () => window.__held.length === 2);
+  await pg.evaluate(() => window.__held[1]());
+  await waitFn(pg, () => !_wsWriting && !dirty);
+  const last = await pg.evaluate(() => window.__writes[1] || '');
+  assert.ok(/one two three/.test(last), 'the follow-up write carries the keystroke');
+  assert.deepEqual(pageErrors, []);
+});
+
+// Boot kept a newer local copy of a folder document (closed inside the debounce: pagehide reached
+// localStorage, the folder write did not) and left it clean, so a tab switch skipped the pre-swap
+// flush and the file never got it. The kept copy must be unsaved; a copy equal to the file must not.
+test('a kept boot copy the file lacks is unsaved and written; one the file has is left alone', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const run = async edited => {
+    const after = await pg.evaluate(async edited => {
+      adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title><_docid>doc-kept</_docid></head><body>' +
+        '<outline text="on disk"/></body></opml>'));
+      const fileText = toOpml(root);
+      if (edited) root.children[0].text = 'on disk, then typed';
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ root, fileName: 'notes.opml', savedAt: Date.now(), fileModified: 1000 }));
+      root = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)).root; buildIndex(root, null);   // as the boot restore leaves it
+      window.__writes = [];
+      window.safeWriteOpml = async (dir, name, opml) => { window.__writes.push(opml); };
+      window.anchorWorkspaceFile = async () => {};
+      window.refreshOwnDocInIndex = () => {};
+      const fh = { getFile: async () => ({ lastModified: 1000, size: fileText.length, text: async () => fileText }) };
+      clearTimeout(autosaveTimer); dirty = false;
+      await reopenWorkspaceDoc({ name: 'nb', getFileHandle: async () => fh }, 'notes.opml');
+      return { dirty, kept: root.children[0].text, anchor: _wsKnownModified, bound: workspaceFile === fh };
+    }, edited);
+    await pg.evaluate(() => { clearTimeout(autosaveTimer); writeAutosavePayloadNow(); });   // the debounce the reopen scheduled, or a view tick
+    await waitFn(pg, () => !_wsWriting);
+    return { ...after, ...(await pg.evaluate(() => ({ writes: window.__writes.slice(), dirtyAfter: dirty }))) };
+  };
+
+  const kept = await run(true);
+  assert.equal(kept.bound, true, 'the file handle is rebound');
+  assert.equal(kept.kept, 'on disk, then typed', 'the newer local copy is kept');
+  assert.equal(kept.anchor, 1000, 'anchored to the file as read');
+  assert.equal(kept.dirty, true, 'the file lacks the kept copy, so it is unsaved');
+  assert.equal(kept.writes.length, 1, 'and the normal debounce writes it');
+  assert.ok(/on disk, then typed/.test(kept.writes[0]));
+  assert.equal(kept.dirtyAfter, false, 'then it reads as saved');
+
+  const same = await run(false);
+  assert.equal(same.bound, true);
+  assert.equal(same.dirty, false, 'a copy the file already holds (opened and read) is not unsaved');
+  assert.equal(same.writes.length, 0, 'and rewrites nothing');
+  assert.deepEqual(pageErrors, []);
 });
 
 // #1443 — the fix must not demote an INHERITED-tag match to a context row.
@@ -3041,7 +3130,9 @@ test('#1498 the sum tip still fires when there is no rollup, and waits its turn'
     buildIndex(root, null); markDirty(); render();
     maybeNudgeSum(w, 'cost');
   });
-  await pg.waitForTimeout(2600);   // past the tip's yield delay
+  // the tip lands after its yield delay; wait for it to hold the region, which the asserts below read
+  await waitFn(pg, () => /Tip: put \{= sum\(cost\)\}/.test(document.getElementById('a11y-live').textContent || ''),
+    null, 15000).catch(() => {});
 
   const spoken = (await pg.evaluate(() => window.__live.slice())).filter(e => e.v);
   const at = spoken.findIndex(e => /^Check failing on/.test(e.v));
@@ -8171,8 +8262,13 @@ test('SW: a precache that fails does not destroy the working offline copy', { sk
     await pg.evaluate(async () => {
       const r = await navigator.serviceWorker.getRegistration();
       try { await r.update(); } catch (_) { /* a failed install is the POINT */ }
+      window.__swReg = r;
     });
-    await pg.waitForTimeout(4000);
+    // The update has run its course once nothing is installing or waiting and any new worker has
+    // finished activating: a failed install goes redundant, a wrongly "successful" one activates
+    // (and its activate is what would delete the old cache), so both outcomes are settled here.
+    await waitFn(pg, () => { const r = window.__swReg;
+      return !r.installing && !r.waiting && (!r.active || r.active.state === 'activated'); }, null, 30000);
     assert.deepEqual(await swCachePaths(pg), before,
       'a failed precache must leave the previous cache untouched; losing /index.html here is the ' +
       'app silently losing the ability to open offline at all');
@@ -8599,7 +8695,7 @@ async function pickerPage(mode) {
     for (let i = 0; i < 60; i++) root.children.push(mkNode('Observation ' + i + ': the quick brown fox jumps over the lazy dog, twice.'));
     buildIndex(root, null); markDirty(); render();
   });
-  await pg.waitForTimeout(1200);   // the debounced autosave the nudge rides on
+  await waitFn(pg, () => !_savePending, null, 15000);   // the debounced autosave the nudge rides on
   return { ctx, pg, downloads };
 }
 async function pressSave(pg) {
@@ -8739,7 +8835,7 @@ test('#1583 a refused picker is asked once: Save then downloads, the menu stops 
       assert.match(errors[0], /would not open the file picker for saving\. Downloading a copy instead, and Save will keep downloading until you reload\./);
       assert.equal(downloads.length, 3, 'and every press still saved a copy');
       await pg.evaluate(() => { root.children[0].text += ' (revised)'; markDirty(); render(); });
-      await pg.waitForTimeout(1300);
+      await waitFn(pg, () => !_savePending, null, 15000);   // the debounced autosave
       const after = await fileMenuState(pg);
       assert.equal(after.fsaOk, false);
       assert.equal(after.saveRow, 'none', 'the Save row stops offering the picker, as on the no-API tier');
@@ -9519,4 +9615,164 @@ test('#1666 a running order of h:mm times totals 2:05, and the h:mm box can be u
     assert.match((await pill()) || '', /^2\.083/, 'and the pill shows decimal hours again');
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
+});
+
+// ── doc-swap data safety: three ways a browser-only document was destroyed by a swap ──────────
+// A default-mode document lives only in this browser (AUTOSAVE_KEY + the OPFS copy), so every path
+// that replaces it, or writes over its slot, is the only thing standing between the user and loss.
+// Driven, because each one is an ordering of storage writes that no source pin can watch happen.
+
+// A condition wait that survives the app's CSP. playwright's waitForFunction evaluates its predicate
+// inside the page on the version CI pins, and the app ships no 'unsafe-eval', so it throws EvalError
+// there while passing on a newer local install. page.evaluate goes through the protocol instead.
+async function waitFn(pg, fn, arg = null, timeout = 15000) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    if (await pg.evaluate(fn, arg)) return;
+    if (Date.now() > end) throw new Error(`waitFn: not true after ${timeout} ms: ${String(fn).slice(0, 160)}`);
+    await pg.waitForTimeout(50);
+  }
+}
+
+// Boot the app in `ctx` and wait on state, not the clock: the OPFS reconcile has run (autosave is
+// live) and the first-run chooser, when it opened, is dismissed through its own exit.
+async function bootIn(ctx, url = APP, init = null) {
+  const pg = await ctx.newPage();
+  const errs = [];
+  pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+  if (init) await pg.addInitScript(init);
+  await pg.goto(url);
+  await waitFn(pg, () => typeof _opfsReconciled !== 'undefined' && _opfsReconciled === true);
+  await pg.evaluate(() => { if (_welcomeOpen) dismissWelcome(); });
+  pg.__errs = errs;
+  return pg;
+}
+const slotHas = (pg, text) => waitFn(pg, t => (localStorage.getItem('pointliner_autosave') || '').includes(t), text);
+// A document typed in default mode, and its autosave landed.
+async function seedBrowserDoc(pg, text) {
+  await pg.evaluate(t => { root.children = [mkNode(t)]; buildIndex(root, null); markDirty(); render(); }, text);
+  await slotHas(pg, text);
+}
+const OTHER_OPML = '<?xml version="1.0"?><opml version="2.0"><head><title>Other</title></head><body>' +
+  '<outline text="Other point"/></body></opml>';
+
+test('doc-swap: File > Open leaves a browser-only document restorable, on both open paths', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const X = 'Never saved to a file, the only copy';
+  // The two branches of openFile: the File System Access picker, and the <input type=file> fallback
+  // a browser without the API takes (forced here by removing the API before the app reads it).
+  const paths = [
+    { name: 'picker', init: null },
+    { name: 'input', init: () => { delete window.showOpenFilePicker; delete Window.prototype.showOpenFilePicker; } },
+  ];
+  for (const path of paths) {
+    const ctx = await browser.newContext();
+    try {
+      const pg = await bootIn(ctx, APP, path.init);
+      assert.equal(await pg.evaluate(() => hasFSA), path.name === 'picker', `precondition (${path.name}): the intended open branch`);
+      await seedBrowserDoc(pg, X);
+      assert.equal(await pg.evaluate(() => unsavedToDisk()), false, 'precondition: default mode, so Open asks nothing');
+      if (path.name === 'picker') {
+        await pg.evaluate((opml) => {
+          window.showOpenFilePicker = async () => [{ name: 'other.opml', kind: 'file',
+            async getFile() { return new File([opml], 'other.opml', { type: 'text/x-opml' }); } }];
+        }, OTHER_OPML);
+        await pg.evaluate(() => { openFile(); });
+      } else {
+        const [chooser] = await Promise.all([pg.waitForEvent('filechooser'), pg.evaluate(() => { openFile(); })]);
+        await chooser.setFiles({ name: 'other.opml', mimeType: 'text/x-opml', buffer: Buffer.from(OTHER_OPML) });
+      }
+      await waitFn(pg, () => fileName === 'other.opml' && root.children[0]?.text === 'Other point');
+      // One keystroke's worth of edit in the opened document, autosaved over the slot X lived in.
+      await pg.evaluate(() => { root.children[0].text += '!'; markDirty(); });
+      await slotHas(pg, 'Other point!');
+      // the stash is awaited inside the open, which finished before the 800ms autosave above landed
+      assert.equal(await pg.evaluate(() => hasEarlierVersion()), true, `${path.name}: the replaced document is offered back`);
+      // Read what Restore would apply (the picker branch has a file handle, so Restore itself confirms first).
+      const back = await pg.evaluate(() => earlierVersionForCurrentDoc().root.children.map(n => n.text));
+      assert.deepEqual(back, [X], `${path.name}: Restore earlier version brings the replaced document back`);
+      assert.deepEqual(pg.__errs, []);
+    } finally { await ctx.close(); }
+  }
+});
+
+test('doc-swap: Undo after Restore earlier version does not write a stale edit into the restored document', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const LONG = 'A long paragraph the earlier version held, which no undo entry knows about';
+  const ctx = await browser.newContext();
+  try {
+    const pg = await bootIn(ctx);
+    await seedBrowserDoc(pg, LONG);
+    // The earlier version: this document with N holding the long paragraph.
+    await pg.evaluate(async () => { await stashPayloadAsPrev(capturePayloadOf(root), root.docId); });
+    // Then N became "foo", and the user typed " bar" into it: a real text-edit undo entry.
+    await pg.evaluate(() => { root.children[0].text = 'foo'; render(); });
+    await pg.evaluate(() => {
+      const el = document.querySelector('.node-content[data-id]'); const n = nodeById(el.dataset.id);
+      enterEdit(el, n); el.focus(); activeContentId = n.id; setCaretByOffset(el, editableText(el).length);
+    });
+    await pg.keyboard.type(' bar');
+    await pg.keyboard.press('Escape');
+    await waitFn(pg, () => root.children[0].text === 'foo bar' && undoStack.some(e => e.kind === 'text' && e.prev === 'foo'));
+    // A point the earlier version never had, selected as the row cursor.
+    const extraId = await pg.evaluate(() => {
+      const m = mkNode('Added after the snapshot'); root.children.push(m); buildIndex(root, null); markDirty(); render();
+      selectedIds.clear(); selectedIds.add(m.id); selAnchorId = m.id; selFocusId = m.id; return m.id;
+    });
+    const restored = await pg.evaluate(async () => restoreEarlierVersion());
+    assert.equal(restored, true, 'precondition: the restore ran');
+    assert.deepEqual(await pg.evaluate(() => root.children.map(n => n.text)), [LONG], 'precondition: the earlier version is on screen');
+    await pg.evaluate(() => document.activeElement?.blur?.());
+    const texts = () => pg.evaluate(() => root.children.map(n => n.text));
+    await pg.keyboard.press('Control+z');
+    assert.deepEqual(await texts(), [LONG], 'Ctrl+Z after a restore must not replay an edit recorded against the replaced tree');
+    await pg.keyboard.press('Control+Shift+z');
+    assert.deepEqual(await texts(), [LONG], 'nor may redo');
+    // The row cursor may legitimately land on a restored point afterwards; what it must never do is
+    // keep naming one this document does not contain (#1522: the arrows then move nothing).
+    const sel = await pg.evaluate((id) => {
+      const ids = [...selectedIds, selAnchorId, selFocusId].filter(x => x != null);
+      return { gone: !nodeById(id), stale: ids.filter(x => !nodeById(x)) };
+    }, extraId);
+    assert.deepEqual(sel, { gone: true, stale: [] }, 'no selection id outlives the restore as a reference to a missing point');
+    assert.deepEqual(pg.__errs, []);
+  } finally { await ctx.close(); }
+});
+
+test('doc-swap: a shared snapshot never writes the browser slot the user\'s own document lives in', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const MINE = 'My own document, only in this browser';
+  const SNAP = 'Received snapshot point';
+  const shell = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
+  const island = '<script type="application/xml" id="pl-embedded-doc"></script>';
+  assert.ok(shell.includes(island), 'precondition: the shell ships an empty island');
+  const snapHtml = shell.replace(island, '<script type="application/xml" id="pl-embedded-doc">' +
+    '<?xml version="1.0"?><opml version="2.0"><head><title>Snap</title></head><body><outline text="' + SNAP + '"/></body></opml></script>');
+  const dir = mkdtempSync(join(tmpdir(), 'pl-docswap-'));
+  const snapFile = join(dir, 'snapshot.html');
+  writeFileSync(snapFile, snapHtml);
+  const ctx = await browser.newContext();   // ONE context: the app and the snapshot share an origin's storage
+  try {
+    const app = await bootIn(ctx);
+    await seedBrowserDoc(app, MINE);
+    await app.close();
+
+    const snap = await bootIn(ctx, 'file://' + snapFile);
+    assert.equal(await snap.evaluate(() => loadedFromEmbed), true, 'precondition: booted from the island');
+    assert.ok(await snap.evaluate(t => (localStorage.getItem('pointliner_autosave') || '').includes(t), MINE),
+      'precondition: the snapshot page sees the same storage the app wrote');
+    // One edit (a pill click is one markDirty), and the debounced autosave tick runs to completion.
+    await snap.evaluate(() => { root.children[0].text += ' clicked'; markDirty(); });
+    await waitFn(snap, () => autosaveTimer === null && !_savePending);
+    await snap.evaluate(() => flushPendingAutosave());   // the pagehide path too
+    assert.equal(await snap.evaluate(() => unsavedToDisk()), true, 'the dirty snapshot still reads as unsaved (UXP-102)');
+    const slot = await snap.evaluate(() => localStorage.getItem('pointliner_autosave') || '');
+    assert.ok(slot.includes(MINE) && !slot.includes(SNAP), 'the snapshot\'s edit must not land in the user\'s autosave slot');
+    await snap.close();
+
+    const back = await bootIn(ctx);
+    assert.deepEqual(await back.evaluate(() => root.children.map(n => n.text)), [MINE],
+      'the next normal launch boots into the user\'s own document, not the snapshot');
+    assert.deepEqual(back.__errs, []);
+  } finally { await ctx.close(); rmSync(dir, { recursive: true, force: true }); }
 });
