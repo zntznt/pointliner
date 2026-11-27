@@ -286,7 +286,7 @@ export function loadCores() {
     'tableBlockEnd', 'parseMLlines',   // #1584: the multi-line paste handlePaste really calls
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtAggregateText', 'aggKindLabel',   // #1584: mtApplyAggregate is its DOM door
     'tblfmGetAssign', 'tblfmSetAssign',
-    'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown', 'baseToStaticText',
+    'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown', 'baseToStaticText', 'baseExportText',
     'mtColumnLabel',   // #811: the columns-menu door's per-column label
     'parseTodo','formatTodo','collapseDoubledKeyword','collapseTaskKeywordCollision','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','sortChildrenByProp','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority

@@ -1401,6 +1401,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `createBaseAt` — Create a base (interactive grid) from /base — NON-DESTRUCTIVELY. This fixes the
 - `promoteStaticTable` — "Convert to base" on a static table (§6 promote). Splits the point around the table
 - `baseToStaticText` — IA-1 (product-identity §3b, freedom of form): the inverse of "Convert table to base".
+- `baseExportText` — #1708: what a base exports as. An authored base's text IS its table; a query base's text is empty
 - `convertBaseToText`
 - `findFirstTableRange` — Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
 - `announceDebut` — Insert an inline artifact at the current caret (used by the "@" menu).
