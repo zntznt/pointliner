@@ -768,7 +768,7 @@ test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)
   assert.equal(c.evalMath('and(nope>1, 1)'), null);
 });
 
-test('evalMath — a NaN condition fails if() and ?: to null, never takes the else branch (#1696)', () => {
+test('evalMath: a NaN condition fails if() and ?: to null, never takes the else branch (#1696)', () => {
   assert.equal(c.evalMath('if(log(-1), 10, 20)'), null);
   assert.equal(c.evalMath('sqrt(-1) ? 1 : 2'), null);
   // the untaken branch may be NaN: only the condition and the chosen branch decide
