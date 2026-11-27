@@ -36999,6 +36999,7 @@ function undo() {
 }
 
 function redo() {
+  flushActiveTextEdit();   // #1702: record fresh typing first, which ends the redo branch
   if (!redoStack.length) return;
   applyEntry(redoStack.pop(), undoStack, 'next');
 }

@@ -4227,6 +4227,11 @@ test('undo pushes are unconditional here, not guarded on activeContentId', () =>
   // idle and otherwise commits the in-flight typing as its own entry first.
   assert.ok(/function pushUndo\(\) \{\s*flushActiveTextEdit\(\);/.test(_src),
     'pushUndo flushes any in-progress text edit, which is what makes an unconditional call safe');
+  // #1702: the history pair are siblings. undo() flushed and redo() did not, so typing after an undo was
+  // never recorded, never cleared redoStack, and the next redo overwrote it with the old future.
+  for (const fn of ['undo', 'redo'])
+    assert.ok(/^\{\s*flushActiveTextEdit\(\);/.test(fnBody(_src, fn).replace(/^[^{]*/, '')),
+      `${fn}() flushes the live edit before it touches either stack`);
   const fate = fnBody(_src, 'flushActiveTextEdit');
   assert.ok(/if \(activeContentId == null\) return;/.test(fate), 'and that flush no-ops when nothing is being edited');
   for (const fn of ['toggleTaskInNode', 'advanceClockOrdinal']) {

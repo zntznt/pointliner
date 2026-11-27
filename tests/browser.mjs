@@ -4530,6 +4530,38 @@ test('#1507 undo brings back a deleted pill whole, and redo takes it away again'
   }
 });
 
+// #1702 — typing after an undo must end the redo branch. undo() flushed the live edit before popping;
+// redo() did not, so the new typing was never recorded, redoStack was never cleared, and Ctrl+Shift+Z
+// laid the old future over it: " three" vanished and no history step held it.
+test('#1702 redo after fresh typing keeps that typing and redoes nothing', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('one'), mkNode('other')]; buildIndex(root);
+    undoStack.length = 0; redoStack.length = 0; markDirty(); render();
+  });
+  await pg.waitForTimeout(250);
+  const row = i => pg.locator('.node-content').nth(i);
+  const text = () => pg.evaluate(() => root.children[0].text);
+  await row(0).click(); await pg.keyboard.press('End'); await pg.keyboard.type(' two');
+  await row(1).click(); await pg.waitForTimeout(150);
+  assert.equal(await text(), 'one two', 'precondition: the first edit committed');
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(250);
+  assert.equal(await text(), 'one', 'precondition: undo took it back');
+  await row(0).click(); await pg.keyboard.press('End'); await pg.keyboard.type(' three');
+  await pg.waitForTimeout(100);
+  await pg.keyboard.press('Control+Shift+z'); await pg.waitForTimeout(250);
+  const live = await pg.evaluate(() => ({
+    model: root.children[0].text, dom: document.querySelectorAll('.node-content')[0].textContent,
+    redo: redoStack.length,
+  }));
+  assert.equal(live.model, 'one three', 'redo must not lay the old future over the new typing');
+  assert.equal(live.dom, 'one three', 'and the row must show it');
+  assert.equal(live.redo, 0, 'the new typing ended the redo branch');
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(250);
+  assert.equal(await text(), 'one', 'and the typing is one undo step, so it is recoverable');
+  await pg.close();
+});
+
 // 65. #1508 — the Agenda Month grid's keyboard. A <button> fires `click` on Enter/Space and NEVER
 // `mousedown`, so "Show N more points for this day" was a focusable, labelled button that no key
 // could operate: the #1021 shape exactly, and precisely what a source pin cannot catch, since the
