@@ -149,6 +149,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `backlog.md` | Consolidated feature gaps with status marks |
 | `features.md` | The exhaustive engine-level feature reference (contributor-facing; the user inventory is `guide/features.md`) |
 | `performance.md` | Measured performance baseline (incl. the bases sweep) + embedded re-run harnesses |
+| `engineering-evaluation-2026-11.md` | Independent engineering evaluation: scorecard, confirmed defects #1693 to #1702, the three changes that cut future cost |
 | `accessibility.md` | A11y sequencing, complete; retained for the durable guardrails |
 | `ux.md` | Discoverability strategy / verbosity dial (vision; the standard governs where they differ) |
 | `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive snapshot (candidate material, not commitments) |
