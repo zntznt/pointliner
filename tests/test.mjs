@@ -18385,6 +18385,18 @@ test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguish
   assert.equal(c.childrenComputePillsNotProp(c.mkNode('empty'), 'fee'), false, 'no children → not flagged');
 });
 
+test('#1709 childrenComputePillsNotProp: a subtotal pill over a deeper property is a scope case, not a pills case', () => {
+  // Ravi's shape: Top {= sum(k)} > Mid {= sum(k)} > leaf k=5. Mid's pill is a SUBTOTAL; the fix is sum(k, subtree).
+  const top = c.mkNode('Top'); const mid = c.mkNode('Mid'); mid.math = [{ key: 'm', expr: 'sum(k)' }];
+  const leaf = c.mkNode('leaf'); leaf.props.push({ key: 'k', val: '5' });
+  mid.children.push(leaf); top.children.push(mid);
+  assert.equal(c.childrenComputePillsNotProp(top, 'k'), false, 'k stored deeper: the subtree tip, not "store the value", is the fix');
+  // the negative: the same middle pill with nothing stored anywhere below is still the pills case
+  const bare = c.mkNode('Top'); const m2 = c.mkNode('Mid'); m2.math = [{ key: 'm', expr: 'words * rate' }];
+  m2.children.push(c.mkNode('leaf')); bare.children.push(m2);
+  assert.equal(c.childrenComputePillsNotProp(bare, 'k'), true, 'no k anywhere below: still the pills-vs-property case');
+});
+
 test('#1200 wiring: renderMathPill names the pills-vs-property cause on an empty rollup', () => {
   const fn = fnBody(_src, 'renderMathPill');
   assert.ok(/childrenComputePillsNotProp\(cookieNode, emptyProp\)/.test(fn),
