@@ -18656,13 +18656,23 @@ test('evalCheck: a check that queries checks re-entering its own host answers, n
   };
   const self = n('h1', 'host', { check: 'count("is:failing", document) == 0' });
   withRoot(n('r', '', {}, [self]), () => {
-    // the host sees itself mid-evaluation as 'error' (cannot evaluate), so it counts as one failing point
-    assert.equal(c.evalCheck(self, {}), 'fail');
-    assert.equal(c.queryMatchesNode(c.parseSearchQuery('is:failing'), self), true);
-    assert.equal(c.evalCheck(self, {}), 'fail', 'the guard set is cleaned up: a second call gives the same verdict');
+    // mid-evaluation the host is neither passing nor failing, so it does not count itself: "no check
+    // in this document fails" holds when it is the only check (it answered 'fail' forever before)
+    assert.equal(c.evalCheck(self, {}), 'pass');
+    assert.equal(c.queryMatchesNode(c.parseSearchQuery('is:failing'), self), false);
+    assert.equal(c.evalCheck(self, {}), 'pass', 'the guard set is cleaned up: a second call gives the same verdict');
   });
+  const bad = n('b0', 'bad', { x: 5, check: 'x < 1' });
+  withRoot(n('r', '', {}, [self, bad]), () => {
+    assert.equal(c.evalCheck(self, {}), 'fail', 'another failing check still fails it');
+    bad.props[0].val = '0';
+    assert.equal(c.evalCheck(self, {}), 'pass', 'and it passes once that one is fixed');
+  });
+  // two such checks in one document each leave the other out while it is asking, so both pass
+  const twins = [n('t1', 'a', { check: 'count("is:failing", document) == 0' }), n('t2', 'b', { check: 'count("is:failing", document) == 0' })];
+  withRoot(n('r', '', {}, twins), () => assert.deepEqual(twins.map(t => c.evalCheck(t, {})), ['pass', 'pass']));
   const here = n('h2', 'host', { check: 'here("is:passing") == 1' });
-  withRoot(n('r', '', {}, [here]), () => assert.equal(c.evalCheck(here, {}), 'fail'));
+  withRoot(n('r', '', {}, [here]), () => assert.equal(c.evalCheck(here, {}), 'fail', 'nor does it count itself as passing'));
   // not self-referential: the counted points are plain checks, so the count is exact
   const kids = [n('b', 'bad', { x: 5, check: 'x < 1' }), n('g', 'good', { x: 0, check: 'x < 1' }), n('e', 'bare', { check: 'x' })];
   const host = n('h3', 'host', {}, kids);
@@ -18705,7 +18715,7 @@ test('evalCheck: a chain of nested counting checks evaluates each check once, an
     vm.runInContext('root = __chkRoot; buildIndex(root); resetDocCaches();', ctx);
     const all = []; (function w(x) { all.push(x); x.children.forEach(w); })(doc);
     assert.equal(all.slice(1).map(x => x.id + ':' + c.evalCheck(x, c.collectVars(), c.ancestorsOf(x))).join(' '),
-      'p:fail p1:fail q:fail q1:fail s:fail s1:pass');
+      'p:fail p1:fail q:pass q1:fail s:pass s1:pass');
   } finally {
     ctx.expandAggExpr = orig;
     vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', ctx);
@@ -23577,8 +23587,7 @@ test('reopenWorkspaceDoc: the file-wins branch is loud and recoverable, never a 
     'the identity-unknown copy is re-keyed and stashed under the now-open doc');
   assert.ok(/stashPayloadAsPrev\(localPayload, localId\)/.test(fn),
     'a provably different doc\'s copy is stashed under its own id');
-  // the identity-unknown case says what happened (P4); a provably-different doc is the normal
-  // cross-doc case and stays quiet
+  // the identity-unknown case says what happened (P4)
   assert.ok(/if \(unknownIdentity\) \{\s*\n\s*flashHint\(/.test(fn), 'identity-unknown flashes the notice');
   assert.ok(fn.includes('Restore earlier version'), 'the notice names the recovery door');
   // the stash helper guards its inputs (no payload / no id → no write, reported false).
@@ -33551,8 +33560,41 @@ test('#845 item 1 — every boot losing-copy path flashes, honestly, whether or 
   const failures = fn.split('could not be kept as a restore point; storage may be full.').length - 1;
   assert.equal(failures, 3, 'all three losing-copy paths must name a failed stash');
   // the provably-different-document branch (flashed nothing at all before) now speaks
-  assert.match(fn, /\} else if \(localId\) \{[\s\S]{0,600}The document open before was kept; open it and use File menu, Restore earlier version\./,
-    'the different-document branch must flash');
+  assert.match(fn, /const keepOtherDocument = async \(\) => \{\s*\n\s*const stashed = await stashPayloadAsPrev\(localPayload, localId\);[\s\S]{0,300}The document open before was kept; open it and use File menu, Restore earlier version\./,
+    'the different-document copy is stashed, and the flash says where it went');
+  assert.match(fn, /\} else if \(localId\) await keepOtherDocument\(\);/, 'the local-newer branch keeps a different document');
+  // the file-newer branch replaced a different document with no restore point and no word
+  assert.match(fn, /\} else if \(otherDocumentLoses\(localId, fileRoot\.docId, restoreFocusId && restoreFocusId\.docId\)\) \{\s*\n\s*await keepOtherDocument\(\);/,
+    'and so does the file-newer branch');
+});
+test('otherDocumentLoses: only a different, known document whose autosave we hold', () => {
+  assert.equal(c.otherDocumentLoses('a', 'b', 'a'), true);
+  assert.equal(c.otherDocumentLoses('a', 'a', 'a'), false, 'the same document is the diverged case, handled apart');
+  assert.equal(c.otherDocumentLoses('a', null, 'a'), false, 'a file with no identity mark');
+  assert.equal(c.otherDocumentLoses(null, 'b', null), false, 'nothing identified on screen');
+  assert.equal(c.otherDocumentLoses('a', 'b', 'z'), false, 'a first-run blank document the autosave slot never held: no false "could not be kept"');
+  assert.equal(c.otherDocumentLoses('a', 'b', null), false);
+});
+// The "picker refused" message sends the user to drag a file onto the page, and nothing opened one:
+// a document file fell through to the browser, which navigated away from the app to show it.
+test('a dropped document opens, anywhere on the page (pure pick + src pins)', () => {
+  const f = (name, type = '') => ({ name, type });
+  const doc = f('notes.opml');
+  assert.equal(c.droppedDocFile([f('a.png', 'image/png'), doc]), doc, 'the document among the dropped files');
+  assert.equal(c.droppedDocFile([f('NOTES.OPML')]).name, 'NOTES.OPML');
+  assert.equal(c.droppedDocFile([f('export.xml', 'text/xml')]).name, 'export.xml', 'the names the Open file input accepts');
+  assert.equal(c.droppedDocFile([f('x', 'text/x-opml')]).name, 'x');
+  assert.equal(c.droppedDocFile([f('a.pdf', 'application/pdf'), f('opml.txt', 'text/plain')]), null);
+  assert.equal(c.droppedDocFile(null), null);
+  const pd = fnBody(_src, 'handlePageFileDrop');
+  assert.match(pd, /^\s*if \(e\.defaultPrevented \|\| !\[\.\.\.\(e\.dataTransfer\?\.types \|\| \[\]\)\]\.includes\('Files'\) \|\| e\.target\.closest\?\.\('input\[type=file\]'\)\) return;\n\s*e\.preventDefault\(\);/m,
+    'every unclaimed file drag is cancelled, so the browser never replaces the app with the file');
+  assert.ok(_src.includes("document.addEventListener('dragover', handlePageFileDrop);") && _src.includes("document.addEventListener('drop', handlePageFileDrop);"),
+    'wired on the document, for both events (a drop only fires after a cancelled dragover)');
+  const od = fnBody(_src, 'openDroppedFile');
+  assert.ok(/if \(unsavedToDisk\(\) && !await openConfirmDialog\(/.test(od), 'the same UXP-103 confirm gate as File > Open');
+  assert.ok(od.includes('await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name });') && !/\badoptDoc\(/.test(od),
+    'and the same restore point for the outgoing document');
 });
 test('#845 item 2 — unmarkedFilesNote (pure): the no-docId scan skip is named, not silent', () => {
   assert.equal(c.unmarkedFilesNote(0), '');

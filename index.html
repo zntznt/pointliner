@@ -5817,6 +5817,9 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
 
 // Points whose check is being evaluated right now. A check that queries checks (count("is:failing",
 // document), here("is:passing")) reaches its own host again; without this it recursed to a RangeError.
+// A check being evaluated answers null to that query, as a point with no check does: it is neither
+// passing nor failing yet, so it never counts itself. Answering 'error' counted it as failing, and
+// `count("is:failing", document) == 0` could never pass.
 const _evalCheckActive = new Set();
 // Per-pass verdict memo: a chain of N checks each counting the failing checks below it re-evaluated the
 // checks under it at every level, 2^N evaluations. Lives for ONE outermost evalCheck call (cleared when
@@ -5824,7 +5827,7 @@ const _evalCheckActive = new Set();
 // callers pass different scopes. A verdict is stored only when nothing in its evaluation hit the guard
 // for a point OTHER than the one asking (a cycle between two checks): that answer depends on which
 // checks happen to be active, so it is recomputed exactly as before. A point reaching itself is always
-// active when it asks, so that 'error' is the same in every context and does not block the memo.
+// active when it asks, so that null is the same in every context and does not block the memo.
 const _evalCheckStack = [], _evalCheckMemo = new Map();
 let _evalCheckCycles = 0;
 
@@ -5842,7 +5845,7 @@ function evalCheck(node, vars = {}, ancestors = []) {
   if (!raw) return null;
   if (_evalCheckActive.has(node)) {                 // re-entered: its verdict depends on itself
     if (_evalCheckStack[_evalCheckStack.length - 1] !== node) _evalCheckCycles++;   // another check's cycle
-    return 'error';
+    return null;                                    // not counted: neither passing nor failing yet
   }
   const hit = _evalCheckMemo.get(node);
   if (hit && hit.vars === vars && hit.ancestors.length === ancestors.length && hit.ancestors.every((a, i) => a === ancestors[i])) return hit.v;
@@ -38339,6 +38342,12 @@ async function reconnectWorkspace() {
 
 // Reopen the workspace doc from disk, honoring newer-wins, and rebind for auto-write.
 // Returns true if the folder/file was reachable, false if it's gone (→ forget the workspace).
+// Pure: when the folder file wins, is the copy it replaces a DIFFERENT document whose autosave we
+// hold? Both identities must be known and differ, and the stored payload must be that document's
+// (on first run the screen holds a blank document the autosave slot has never seen).
+function otherDocumentLoses(localId, fileId, payloadId) {
+  return !!(localId && fileId && localId !== fileId && payloadId === localId);
+}
 async function reopenWorkspaceDoc(dir, name) {
   let fh, file;
   try { fh = await dir.getFileHandle(name); file = await fh.getFile(); }
@@ -38356,6 +38365,14 @@ async function reopenWorkspaceDoc(dir, name) {
   let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
   const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
   let restoreFocusId = null, localAhead = false;
+  // A provably DIFFERENT document was open here and the file won: its copy is keyed under its own
+  // identity and surfaces in Restore earlier version when that document is opened again.
+  const keepOtherDocument = async () => {
+    const stashed = await stashPayloadAsPrev(localPayload, localId);
+    flashHint(stashed
+      ? 'Loaded “' + displayName(name) + '” from the folder. The document open before was kept; open it and use File menu, Restore earlier version.'
+      : 'Loaded “' + displayName(name) + '” from the folder. The document open before could not be kept as a restore point; storage may be full.');
+  };
   if (localPayload) {
     try {
       const lp = JSON.parse(localPayload);
@@ -38392,6 +38409,8 @@ async function reopenWorkspaceDoc(dir, name) {
       flashHint(stashed
         ? '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.'
         : '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy could not be kept as a restore point; storage may be full.');
+    } else if (otherDocumentLoses(localId, fileRoot.docId, restoreFocusId && restoreFocusId.docId)) {
+      await keepOtherDocument();   // this branch replaced it with no restore point and no word, unlike its sibling below
     }
   } else {                                               // local autosave is newer than the file
     // A newer local timestamp does NOT prove the in-memory `root` is THIS file's document. On a fresh
@@ -38431,9 +38450,7 @@ async function reopenWorkspaceDoc(dir, name) {
       // that identity too, or the restore path's mis-key guard would reject it) and "Restore
       // earlier version" offers them directly. A provably DIFFERENT document's edits belong
       // to that other document — keyed under its own id, they surface when it is opened again.
-      const stashed = unknownIdentity
-        ? await stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId)
-        : await stashPayloadAsPrev(localPayload, localId);
+      const stashed = unknownIdentity && await stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId);
       // #845: a losing local copy always gets a flash, and the failure variant is honest — a
       // failed stash (localStorage full) means the discarded copy is NOT recoverable, which is
       // the one case the old success-gated wording left the user uninformed about.
@@ -38441,13 +38458,7 @@ async function reopenWorkspaceDoc(dir, name) {
         flashHint(stashed
           ? 'This file carries no identity mark, so the file\'s version was kept. Your newer local copy: File menu, Restore earlier version.'
           : 'This file carries no identity mark, so the file\'s version was kept. Your newer local copy could not be kept as a restore point; storage may be full.');
-      } else if (localId) {
-        // Provably a DIFFERENT document was open here; its copy is keyed under its own identity
-        // and surfaces in Restore earlier version when that document is opened again.
-        flashHint(stashed
-          ? 'Loaded “' + displayName(name) + '” from the folder. The document open before was kept; open it and use File menu, Restore earlier version.'
-          : 'Loaded “' + displayName(name) + '” from the folder. The document open before could not be kept as a restore point; storage may be full.');
-      }
+      } else if (localId) await keepOtherDocument();
     }
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
@@ -40840,6 +40851,33 @@ function dragCarriesExternal(e) {
   const editing = !!e.target.closest?.('[data-editing]');
   return hasFile || (hasWeb && !editing);
 }
+// The first dropped file Open would take (the same names its file input accepts), or null.
+function droppedDocFile(files) {
+  return [...(files || [])].find(f => /\.(opml|xml)$/i.test(f.name || '') || /opml/i.test(f.type || '')) || null;
+}
+// File > Open by drag: the picker-free path the "picker refused" message points at.
+// shortcut: opens unbound (Save picks or downloads), a FileSystemFileHandle from the drag would let Save write in place
+async function openDroppedFile(file) {
+  if (unsavedToDisk() && !await openConfirmDialog({
+    title: 'Discard unsaved changes?',
+    message: 'Your current document has changes not saved to its file. Opening a different one will discard them permanently.',
+    confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+  })) return;
+  try { const text = await file.text(); await adoptDocWithRestorePoint(fromOpml(text), { fileName: file.name }); }
+  catch (e) { flashError('Invalid file: ' + e.message); }
+}
+// Anywhere on the page, not only the outline. A file drop nothing claimed used to fall through to
+// the browser, which opened the file in place of the app.
+function handlePageFileDrop(e) {
+  if (e.defaultPrevented || ![...(e.dataTransfer?.types || [])].includes('Files') || e.target.closest?.('input[type=file]')) return;
+  e.preventDefault();
+  if (e.type !== 'drop') return;
+  const doc = droppedDocFile(e.dataTransfer.files);
+  if (doc) openDroppedFile(doc);
+  else flashHint('Only an OPML document can be opened by dropping it here.');
+}
+document.addEventListener('dragover', handlePageFileDrop);
+document.addEventListener('drop', handlePageFileDrop);
 function handleExternalDrop(e) {
   if (!dragCarriesExternal(e)) return;            // not ours — let native / internal reorder handle it
   const dt = e.dataTransfer;

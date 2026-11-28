@@ -328,6 +328,8 @@ export function loadCores() {
     'imageDialogFields',   // #1326: the shared Insert-image fields + opt-in-aware preview
     'isImageUrl','imgSrcFromHtml',   // #1327: smart image paste detection
     'externalDropContent',   // #1329: resolve a dropped image/text payload
+    'droppedDocFile',        // the document among dropped files (drag to open)
+    'otherDocumentLoses',    // reopen: the file replaces a different document we hold a copy of
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'fnArities','fnArityProblem','arityPhrase',   // #1169: a known function at the wrong arity

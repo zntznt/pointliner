@@ -548,6 +548,56 @@ test('a kept boot copy the file lacks is unsaved and written; one the file has i
   assert.deepEqual(pageErrors, []);
 });
 
+// The folder file won over a DIFFERENT document on screen: it was replaced with no restore point and
+// no word, while the sibling branch (local copy newer) kept it. Both branches keep it now.
+test('a folder file that replaces a different document leaves that document a restore point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(async () => {
+    const opml = (id, text) => '<?xml version="1.0"?><opml version="2.0"><head><title>N</title><_docid>' + id + '</_docid></head><body>' +
+      '<outline text="' + text + '"/></body></opml>';
+    adoptDoc(fromOpml(opml('doc-other', 'only in the browser')));
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ root, fileName: 'other.opml', savedAt: Date.now(), fileModified: 1000 }));
+    window.__hints = []; window.flashHint = m => { window.__hints.push(m); };
+    window.anchorWorkspaceFile = async () => {}; window.refreshOwnDocInIndex = () => {};
+    const fileText = opml('doc-file', 'from the folder');
+    const fh = { getFile: async () => ({ lastModified: 2000, size: fileText.length, text: async () => fileText }) };   // newer than the 1000 on record
+    clearTimeout(autosaveTimer); dirty = false;
+    await reopenWorkspaceDoc({ name: 'nb', getFileHandle: async () => fh }, 'notes.opml');
+    clearTimeout(autosaveTimer);
+    const kept = readPrevVersions()['doc-other'];
+    return { shown: root.children[0].text, kept: kept ? JSON.parse(kept.prev).root.children[0].text : null, hints: window.__hints };
+  });
+  assert.equal(r.shown, 'from the folder', 'the folder file is loaded');
+  assert.equal(r.kept, 'only in the browser', 'the replaced document is a restore point under its own identity');
+  assert.equal(r.hints.filter(h => /The document open before was kept/.test(h)).length, 1, 'and one message says so');
+  assert.deepEqual(pageErrors, []);
+});
+
+// "Drag a file onto the page" is what the app says when the file picker is refused, and nothing
+// opened a dropped document: the browser took the drop and replaced the app with the file.
+test('a document dropped on the page opens; any other file is refused without leaving the app', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const drop = (name, type, body) => pg.evaluate(async ([name, type, body]) => {
+    window.__hints = []; window.flashHint = m => { window.__hints.push(m); };
+    const dt = new DataTransfer(); dt.items.add(new File([body], name, { type }));
+    const fire = kind => { const e = new DragEvent(kind, { dataTransfer: dt, bubbles: true, cancelable: true }); document.body.dispatchEvent(e); return e.defaultPrevented; };
+    const over = fire('dragover'), dropped = fire('drop');
+    await new Promise(r => setTimeout(r, 0));
+    return { over, dropped, hints: window.__hints };
+  }, [name, type, body]);
+
+  const other = await drop('report.pdf', 'application/pdf', '%PDF');
+  assert.deepEqual([other.over, other.dropped], [true, true], 'the drag is accepted and the drop cancelled, so the browser does not navigate to the file');
+  assert.equal(other.hints.length, 1, 'and the refusal is said once');
+
+  const doc = await drop('trip.opml', '', '<?xml version="1.0"?><opml version="2.0"><head><title>T</title></head><body><outline text="dropped in"/></body></opml>');
+  assert.deepEqual([doc.over, doc.dropped], [true, true]);
+  await waitFn(pg, () => root.children[0] && root.children[0].text === 'dropped in');
+  assert.equal(await pg.evaluate(() => fileName), 'trip.opml', 'the dropped document is open under its own name');
+  assert.ok(pg.url().endsWith('index.html'), 'still in the app');
+  assert.deepEqual(pageErrors, []);
+});
+
 // #1443 — the fix must not demote an INHERITED-tag match to a context row.
 //
 // The cheap version of this fix (pass '' everywhere) is 43% faster and WRONG: `self` decides whether
