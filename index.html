@@ -5556,7 +5556,9 @@ function childrenComputePillsNotProp(node, prop, depth = 1) {
   const kids = collectScoped(node || {}, depth);
   if (!kids.length) return false;
   const computes = c => (c.math?.length) || (c.vars?.length) || (c.est?.length);
-  return kids.some(computes) && kids.every(c => childPropNumber(c, prop) === null);
+  if (!kids.some(computes) || !kids.every(c => childPropNumber(c, prop) === null)) return false;
+  // #1709: the prop stored DEEPER means those pills are subtotals, and widening the scope is the fix
+  return !collectScoped(node || {}, Infinity).some(c => childPropNumber(c, prop) !== null);
 }
 
 // #914: a QUOTED query reducer ({= count("q")} / {= sum("q", prop)}) that is subtree-scoped (no
@@ -9042,6 +9044,7 @@ function parseDice(input, vars = {}) {
       if (!fate && (sides < 1 || sides > 100000)) return null;
       if (count < 1 || count > 999) return null;
       if (fate && m[4]) return null;                       // exploding Fate makes no sense
+      if (sides === 1 && m[4]) return null;                // #1697: a d1 always rolls its max, so it would explode to the cap
       const exploding = !!m[4];
       // reroll-once (rK): reroll any die whose value ≤ K a single time, then keep the
       // new value. v1 excludes Fate (no numeric face), exploding (odd combo), and
@@ -9859,7 +9862,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   while ((m = re.exec(s)) !== null) {
     if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
     const id = m[0].toLowerCase();
-    if (MATH_CONST_NAMES.has(id)) continue;
+    if (MATH_CONST_NAMES.has(id) && !(id in vars)) continue;   // #1695: a declared variable shadows the constant
     if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
     if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
     // #952: a DISTRIBUTION variable is declared and correct — it just isn't a number. Without
@@ -13777,7 +13780,7 @@ function mtSortOrder(rows, col, dir, role, seqs, lastDataRow) {
     // path keeps Calculate's parseFloat, because with no role there is no numeric display
     // to agree with, and Calculate is the command it was disagreeing with.
     if (role === 'number') { const n = Number(v); return Number.isFinite(n) ? n : null; }
-    if (numericCol) return cellNum(v);
+    if (numericCol) return parseDuration(v) ?? cellNum(v);   // #1706: a 1:30 property value sorts as 1.5 hours, as its total reads it
     if (role === 'date') return parseDueDate(v);
     if (role === 'status') { const i = seqOrder.get(v.toUpperCase()); return i === undefined ? null : i; }
     return v.toLowerCase();
@@ -19771,7 +19774,7 @@ function termMatchesNode(term, node, seqs, vars, links,
     // to due:/start:, so a date string is deliberately not numeric here.
     return (node.props || []).some(p => {
       if (p.key.toLowerCase() !== term.key) return false;
-      const n = Number(String(p.val).trim());
+      const v = String(p.val).trim(), n = parseDuration(v) ?? Number(v);   // #1706: 1:30 compares as 1.5 hours
       if (!Number.isFinite(n)) return false;
       switch (term.op) {
         case '>':  return n >  term.num;
@@ -31624,7 +31627,7 @@ function mathCompletions(prefix, vars) {
   for (const n of ['sum','avg','count']) pushFn(n, 'agg', n + '(prop)');       // child roll-ups (expandAggExpr)
   pushFn('words', 'agg', 'words(subtree)');
   for (const n of [...Object.keys(MATH_CONSTS), 'today']) {                    // today is dynamic, added by hand
-    if (seen.has(n) || !match(n)) continue; seen.add(n);
+    if (seen.has(n) || (vars && n in vars) || !match(n)) continue; seen.add(n);   // #1695: a declared variable shadows it, so offer the variable
     out.push({ name: n, group: 'const', insert: n, caretBack: 0, hint: 'constant', desc: MATH_FN_DESC[n], guide: 'math' });
   }
   for (const n of Object.keys(vars || {})) {                                   // a document variable (no fixed desc/guide — it's the user's own)
@@ -31771,6 +31774,9 @@ function evalMath(input, vars = {}) {
   // open across midnight (or a doc opened the next day without reload) stays current.
   // The static tables (MATH_CONSTS/FN1/FN2/FN3) are hoisted to module scope above.
   const _today = dueDateToday();
+  // if() and ?: share this: a NaN condition is no verdict (→ the final isNaN gate → null), as cmp()
+  // and and()/or()/not() refuse a NaN operand, instead of silently taking the else branch (#1696).
+  const pick = (cond, thenV, elseV) => isNaN(cond) ? NaN : cond ? thenV : elseV;
 
   function ident() {
     let name = '';
@@ -31784,8 +31790,10 @@ function evalMath(input, vars = {}) {
       name += eat();
       while (/[a-z0-9_]/.test(peek())) name += eat();
     }
-    if (name === 'today') return _today;            // dynamic — stays current per call
-    if (name in MATH_CONSTS) return MATH_CONSTS[name];
+    // #1695: a declared variable wins over a constant of the same name, as it already does in dice.
+    const isVar = peek() !== '(' && name in vars;
+    if (!isVar && name === 'today') return _today;            // dynamic — stays current per call
+    if (!isVar && name in MATH_CONSTS) return MATH_CONSTS[name];
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
@@ -31809,7 +31817,7 @@ function evalMath(input, vars = {}) {
       expect(',');
       const elseV = ternary();
       expect(')');
-      return cond ? thenV : elseV;
+      return pick(cond, thenV, elseV);
     }
     if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'avg' || name === 'and' || name === 'or') {
       expect('(');
@@ -31914,7 +31922,7 @@ function evalMath(input, vars = {}) {
     const thenV = ternary();
     expect(':');
     const elseV = ternary();
-    return cond ? thenV : elseV;
+    return pick(cond, thenV, elseV);
   }
 
   try {
@@ -32599,7 +32607,7 @@ const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5.
 // one evaluation stays near half a second at the top (20000 trials of 25d6), paid once per input since
 // _simMemo holds the result; above it the call is #ERR (999d6! x 20000 froze the tab for 26 s).
 const SIM_WORK_MAX = 500000;
-// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average (parseDice refuses an exploding d1).
 function simDiceCost(terms) {
   let n = 0;
   for (const t of terms) if (t.kind === 'dice') n += t.count * (t.exploding ? Math.min(100, t.sides / (t.sides - 1)) : 1);
@@ -39453,8 +39461,12 @@ function toMarkdown(rootNode) {
       } else {
         const ownMarker = isTodo && isTaskFirst(body); // task form: the text IS the list item
         const marker = node.type === 'ol' ? `${ordinal}.` : '-';
-        out.push(ownMarker ? `${indent}${lines[0]}` : `${indent}${marker} ${lines[0]}`);
-        for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
+        // #1701: a CommonMark hard break (`\`) ends every line but the last, so the item's own lines
+        // stay distinct from its note (plain continuation lines below) and re-import as its text.
+        // A quote keeps `> ` per line and a fence is literal, so neither takes one.
+        const brk = (k) => (k < lines.length - 1 && !isQuote && node.type !== 'code') ? '\\' : '';
+        out.push(ownMarker ? `${indent}${lines[0]}${brk(0)}` : `${indent}${marker} ${lines[0]}${brk(0)}`);
+        for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}${brk(i)}`);
       }
     }
     // the point's note: plain continuation lines indented under the item
@@ -39505,10 +39517,11 @@ function markdownToPoints(md) {
   let listStack = [];   // {rel, node} within the current section (list nesting)
   let para = null;      // the paragraph node currently accumulating consecutive lines
   const fnDefs = [];    // {key, text} footnote definitions, attached at the end
+  let tail = null;      // #1701 {node, ind}: the point the last line opened, until a blank line
   const indentOf = (s) => s.length - s.replace(/^ +/, '').length;
   const newSection = () => { base = null; listStack = []; para = null; };
   const attach = (ind, node) => {
-    para = null;
+    para = null; tail = { node, ind };
     if (base === null) base = ind;
     const rel = Math.max(0, ind - base);
     while (listStack.length && listStack[listStack.length - 1].rel >= rel) listStack.pop();
@@ -39527,7 +39540,7 @@ function markdownToPoints(md) {
     const raw = lines[i].replace(/\t/g, '  ');
     const ind = indentOf(raw);
     const t = raw.trim();
-    if (t === '') { para = null; continue; }
+    if (t === '') { para = null; tail = null; continue; }
 
     const fence = t.match(/^(```|~~~)/);          // fenced code -> one code point holding the block
     if (fence) {
@@ -39535,10 +39548,20 @@ function markdownToPoints(md) {
       let j = i + 1;
       for (; j < lines.length; j++) { buf.push(lines[j]); if (lines[j].trim().startsWith(fence[1])) break; }
       i = j;
-      attach(ind, mkNode(buf.join('\n'), 'code'));
+      // #1701: a fence inside a list item sits at the item's content column; that indent is the
+      // container's, not the code's, so it comes off every line (fences included).
+      const strip = new RegExp('^ {0,' + ind + '}');
+      attach(ind, mkNode(buf.map(l => l.replace(/\t/g, '  ').replace(strip, '')).join('\n'), 'code'));
       continue;
     }
     const h = t.match(/^(#{1,6})\s+(.*)$/);       // ATX heading -> a section (nest by level)
+    // #1701: a heading indented INSIDE an open list item belongs to that item (our export writes a
+    // heading under a bullet that way), so it nests like an item instead of opening a top-level section
+    // that would swallow the siblings after it. A heading at the section's own column still sections.
+    if (h && base !== null && listStack.length && ind - base > listStack[0].rel) {
+      attach(ind, mkNode(`${'#'.repeat(h[1].length)} ${h[2].trim()}`, `h${h[1].length}`));
+      continue;
+    }
     if (h) {
       para = null;
       const level = h[1].length;
@@ -39547,6 +39570,7 @@ function markdownToPoints(md) {
       sections[sections.length - 1].kids.push(node);
       sections.push({ level, kids: node.children });
       newSection();
+      tail = { node, ind };
       continue;
     }
     if (HR_RE.test(t)) { attach(ind, mkNode(t, 'divider')); continue; }   // thematic break -> divider
@@ -39554,13 +39578,23 @@ function markdownToPoints(md) {
     if (fd) { fnDefs.push({ key: fd[1], text: fd[2].trim() }); para = null; continue; }
     const li = t.match(/^([-*+]|\d+[.)])\s+(.*)$/);                       // list item (bullet/ordered/task)
     if (li) {
-      const rest = li[2];
+      let rest = li[2];
+      while (rest.endsWith('\\') && i + 1 < lines.length && lines[i + 1].trim()) rest = rest.slice(0, -1) + '\n' + lines[++i].trim();   // #1701: hard break = the item's next line
       if (HR_RE.test(rest)) attach(ind, mkNode(rest, 'divider'));         // `- ---` is our exported divider
       else if (/^\[[ xX]\]\s/.test(rest)) attach(ind, mkNode(`- ${rest}`, 'todo'));   // a task keeps its box
       else attach(ind, mkNode(rest, /^\d/.test(li[1]) ? 'ol' : 'ul'));
       continue;
     }
     if (t.startsWith('> ') || t === '>') { attach(ind, mkNode(t, 'quote')); continue; }   // blockquote
+    // #1701: a plain line straight under a point (no blank line) on its content column is that point's
+    // continuation, which toMarkdown writes for the note and, last, the [key: value · ...] property line.
+    if (tail && ind >= tail.ind + 2) {
+      const pm = t.match(/^\[([^\]:]+: [^\]]*)\]$/);
+      if (pm) { tail.node.props = pm[1].split(' · ').map(kv => { const k = kv.indexOf(': '); return { key: kv.slice(0, k), val: kv.slice(k + 2) }; }); tail = null; }
+      else tail.node.note = (tail.node.note ? tail.node.note + '\n' : '') + raw.slice(tail.ind + 2);
+      para = null;
+      continue;
+    }
     if (para) para.text += '\n' + t;                                     // paragraph: coalesce lines
     else { const node = mkNode(t, 'para'); attach(ind, node); para = node; }
   }
