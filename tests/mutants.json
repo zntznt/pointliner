@@ -18,6 +18,15 @@
   ],
   "mutants": [
     {
+      "id": "base-export-frozen-grid",
+      "suite": "unit",
+      "why": "a query base exports its frozen grid; exporting node.text again writes the whitespace-only line the existence guard must catch",
+      "file": "index.html",
+      "find": "return node.qbase ? baseToStaticText(node) : node.text;",
+      "replace": "return node.text;",
+      "kills": "#1708 a table view as text"
+    },
+    {
       "id": "roll-count-scope-sniff",
       "suite": "unit",
       "why": "the folder-scope tip reads the roll head out of g.def; a counted {roll 2 folder: ...} must still be read as a folder roll",

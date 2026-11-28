@@ -25476,6 +25476,11 @@ function promoteStaticTable(node, l0, l1) {
 function baseToStaticText(node) {
   return node.qbase ? serializeTable(mtModel(node)) : baseRecipeMarkdown(node.text);
 }
+// #1708: what a base exports as. An authored base's text IS its table; a query base's text is empty
+// (its rows are a live projection), so it freezes to its current grid, as a pill freezes to its value.
+function baseExportText(node) {
+  return node.qbase ? baseToStaticText(node) : node.text;
+}
 function convertBaseToText(nodeId) {
   const node = nodeById(nodeId);
   if (!node || node.type !== 'base') return;
@@ -34818,8 +34823,11 @@ function pillVarsAt(node, key, fallback) {
   return (key != null && renderPosVarMaps(node)?.get(key)) || varMapAt(node);
 }
 function pillScopeAt(node, key, fallback) {
+  // #1708: test the index, not `vars === fallback`: displayText passes varMapAt(node) as the fallback,
+  // the very map pillVarsAt returns, so a live point read as foreign and lost its own props (#ERR).
+  if (!node || nodeById(node.id) !== node) return fallback;
   const vars = pillVarsAt(node, key, fallback);
-  return vars === fallback ? fallback : resolveNodeScope(node, ancestorsOf(node), vars);
+  return resolveNodeScope(node, ancestorsOf(node), vars);
 }
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
@@ -39413,7 +39421,7 @@ function toMarkdown(rootNode) {
       // #806 (agent-review, UXP-201): exports resolve node links to legible text — the same
       // linkText displayText already uses (label → live title → workspace-index title → bare
       // id) — never the raw [[#hexid|]] token that made the exported knowledge graph noise.
-      const body = lt(flattenArtifacts(node.text, node, varMap));
+      const body = lt(flattenArtifacts(baseExportText(node), node, varMap));
       body.split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
@@ -40110,7 +40118,7 @@ function toPlainText(rootNode) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
+      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(lt(flattenArtifacts(baseExportText(node), node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
       const dlabel = stripInlineMd(lt(textForDisplay(node)));

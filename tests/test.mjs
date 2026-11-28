@@ -41389,6 +41389,33 @@ test('table view: the menu door finds the list from its heading or from any row 
   assert.ok(fnBody(_src, 'showBulletPopup').includes('tableViewListFor(node, parentOf(nodeId)'), 'the bullet menu calls it');
 });
 
+// #1708: the list's table view shows outside its grid in two text forms. The strip caption read
+// displayText(list), whose own-prop pill froze to #ERR (pillScopeAt took its fallback for a foreign
+// node because displayText passes varMapAt(node), the very map pillVarsAt returns). And the exports
+// wrote a query base's empty node.text, a whitespace-only line, where the frozen table belongs.
+test('#1708 a table view as text: the caption resolves own props, the exports freeze the grid', () => {
+  const root = c.mkRoot();
+  const trip = c.mkNode('Trip [[math:m1]] left'); trip.math = [{ key: 'm1', expr: 'budget - sum(cost)', result: '' }];
+  trip.props.push({ key: 'budget', val: '400' });
+  const tv = c.mkNode(''); tv.type = 'base';
+  tv.qbase = { expr: '', cols: [{ name: 'Name', field: 'title' }, { name: 'cost', field: 'cost' }], scope: 'siblings' };
+  const train = c.mkNode('Train'); train.props.push({ key: 'cost', val: '120' });
+  const hotel = c.mkNode('Hotel'); hotel.props.push({ key: 'cost', val: '180' });
+  trip.children.push(tv, train, hotel); root.children.push(trip);
+  c._context.__r1708 = root;
+  vm.runInContext('root = __r1708; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    assert.equal(c.displayText(trip), 'Trip 100 left', 'the caption text reads the list\'s own props, as its pill does');
+    for (const [name, out] of [['md', c.toMarkdown(root)], ['txt', c.toPlainText(root)]]) {
+      const lines = out.split('\n');
+      assert.ok(!lines.some(l => l.length && !l.trim()), name + ': no whitespace-only line: ' + JSON.stringify(out));
+      assert.ok(lines.some(l => /Train/.test(l) && /120/.test(l) && /\|/.test(l)), name + ': the table view freezes to its rows: ' + JSON.stringify(out));
+    }
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
+});
+
 test('table view: the strip says where the rows come from, in words', () => {
   assert.equal(c.qbaseSourceText({ expr: '', scope: 'siblings' }, 'Crops'), 'Points in Crops');
   assert.equal(c.qbaseSourceText({ expr: 'beds:>2', scope: 'siblings' }, 'Crops'), 'beds:>2, in Crops');

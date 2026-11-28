@@ -9616,6 +9616,21 @@ test('table view: + Table view shows a typed list as a grid that edits its point
   await pg.close();
 });
 
+// #1708: the strip names its list with displayText, and a list title whose pill reads the list's own
+// props froze to #ERR there while the point itself showed the value. Drive the door and read the strip.
+test('table view: the strip names a list whose title pill reads its own props', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>T</title></head><body>' +
+    '<outline text="Trip {= budget - sum(cost)} left {prop budget: 400}"><outline text="Train {prop cost: 120}"/>' +
+    '<outline text="Hotel {prop cost: 180}"/></outline></body></opml>')); render(); });
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => [...document.querySelectorAll('.addrow-affordance')].find(d => d.textContent.trim() === '+ Table view').click());
+  await pg.waitForTimeout(600);
+  const strips = await pg.evaluate(() => [...document.querySelectorAll('.mt-qbase-expr')].map(e => e.textContent));
+  assert.deepEqual(strips, ['Points in Trip 100 left'], 'the strip shows the value the point shows, not #ERR');
+  await pg.close();
+});
+
 // The keyboard half. The + Table view door is tabindex -1 (every + door is), so a keyboard user's
 // route is the point menu, and at the TOP of a document there is no heading bullet to open it on:
 // the root has no row. This types two top-level rows, opens the menu on one with Shift+F10, walks
