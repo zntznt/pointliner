@@ -627,6 +627,16 @@ test('parseDice — reroll rK parses and validates its combinations', () => {
   assert.equal(c.parseDice('4d6r6'), null);        // threshold ≥ sides → null
 });
 
+test('parseDice refuses an exploding d1, which would only stop at the chain cap (#1697)', () => {
+  assert.equal(c.parseDice('1d1!'), null);           // a d1 always rolls its max: 1d1! totalled 100
+  assert.equal(c.parseDice('999d1!'), null);         // 99,900 and a 99,900-face chain to paint
+  assert.equal(c.parseDice('2d1!+3'), null);         // refused inside a sum too
+  assert.equal(c.parseDice('3d1!>=1'), null);        // and as a success pool
+  assert.equal(c.classifyBraceBody('1d1!', new Map(), {}), 'invalid');   // so it gets the .brace-attempt cue
+  assert.equal(c.rollParsed(c.parseDice('1d1')).total, 1);              // a plain d1 is still legal
+  assert.equal(c.parseDice('1d2!')[0].exploding, true);                 // the smallest explodable die
+});
+
 test('rollParsed — reroll replaces a die ≤K once, keeping the new value', () => {
   c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // die0: 1→reroll→6; dice 1–3: 4,4,4
   try {
@@ -768,6 +778,15 @@ test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)
   assert.equal(c.evalMath('and(nope>1, 1)'), null);
 });
 
+test('evalMath: a NaN condition fails if() and ?: to null, never takes the else branch (#1696)', () => {
+  assert.equal(c.evalMath('if(log(-1), 10, 20)'), null);
+  assert.equal(c.evalMath('sqrt(-1) ? 1 : 2'), null);
+  // the untaken branch may be NaN: only the condition and the chosen branch decide
+  assert.equal(c.evalMath('if(1, 10, sqrt(-1))'), 10);
+  assert.equal(c.evalMath('0 ? sqrt(-1) : 2'), 2);
+  assert.equal(c.evalMath('if(0, 10, 20)'), 20);
+});
+
 test('evalCheck — a compound and(…) check passes the comparison gate and verdicts correctly (#539)', () => {
   const node = { text: 'x', props: [{ key: 'check', val: 'and(sum(cost) <= 10, count(cost) >= 2)' }],
     children: [
@@ -828,6 +847,20 @@ test('evalMath — names colliding with Object.prototype fail to null, not the i
   assert.equal(c.evalMath('constructor(5)', {}), null);
   // …but a DECLARED variable with that name works (resolved by collectVars)
   assert.equal(c.evalMath('constructor*2', { constructor: 5 }), 10);
+});
+
+test('#1695: a declared variable named like a constant wins, in evalMath, the reason and the menu', () => {
+  // Census from the source, so a new constant is covered without editing this test.
+  const m = _src.match(/const MATH_CONSTS = Object\.assign\(Object\.create\(null\), \{([^}]*)\}/);
+  assert.ok(m, 'MATH_CONSTS literal not found (renamed?)');
+  const names = [...m[1].matchAll(/(\w+)\s*:/g)].map(x => x[1]).concat('today');
+  for (const name of nonEmpty(names, 'constant names')) {
+    assert.equal(c.evalMath(name + '*2', { [name]: 5 }), 10, `${name} := 5 must read as 5`);
+    assert.notEqual(c.evalMath(name, {}), null, `undeclared ${name} still reads as the constant`);
+    assert.equal(c.mathErrorReason(name + '*2', { [name]: 'x' }), 'non-numeric', `a string ${name} is named`);
+    const got = c.mathCompletions(name, { [name]: 5 }).filter(x => x.name === name);
+    assert.deepEqual(host(got.map(x => x.group)), ['var'], `${name} is offered once, as the variable`);
+  }
 });
 
 // ── markov ─────────────────────────────────────────────────────────────────
@@ -18352,6 +18385,18 @@ test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguish
   assert.equal(c.childrenComputePillsNotProp(c.mkNode('empty'), 'fee'), false, 'no children → not flagged');
 });
 
+test('#1709 childrenComputePillsNotProp: a subtotal pill over a deeper property is a scope case, not a pills case', () => {
+  // Ravi's shape: Top {= sum(k)} > Mid {= sum(k)} > leaf k=5. Mid's pill is a SUBTOTAL; the fix is sum(k, subtree).
+  const top = c.mkNode('Top'); const mid = c.mkNode('Mid'); mid.math = [{ key: 'm', expr: 'sum(k)' }];
+  const leaf = c.mkNode('leaf'); leaf.props.push({ key: 'k', val: '5' });
+  mid.children.push(leaf); top.children.push(mid);
+  assert.equal(c.childrenComputePillsNotProp(top, 'k'), false, 'k stored deeper: the subtree tip, not "store the value", is the fix');
+  // the negative: the same middle pill with nothing stored anywhere below is still the pills case
+  const bare = c.mkNode('Top'); const m2 = c.mkNode('Mid'); m2.math = [{ key: 'm', expr: 'words * rate' }];
+  m2.children.push(c.mkNode('leaf')); bare.children.push(m2);
+  assert.equal(c.childrenComputePillsNotProp(bare, 'k'), true, 'no k anywhere below: still the pills-vs-property case');
+});
+
 test('#1200 wiring: renderMathPill names the pills-vs-property cause on an empty rollup', () => {
   const fn = fnBody(_src, 'renderMathPill');
   assert.ok(/childrenComputePillsNotProp\(cookieNode, emptyProp\)/.test(fn),
@@ -24073,6 +24118,23 @@ test('#1265 markdownToPoints — export then re-import is stable (round-trip fix
     'import(export(import(md))) equals import(md): export and import are inverses on our own shape');
 });
 
+test('#1701 markdownToPoints: round trip keeps nested code, nested headings, notes, multi-line items and props', () => {
+  const N = (t, ty, kids = [], extra = {}) => Object.assign(c.mkNode(t, ty), { children: kids }, extra);
+  const full = (ns) => ns.map(n => ({ text: n.text, type: n.type, note: n.note || '', props: (n.props || []).map(p => p.key + '=' + p.val), kids: full(n.children || []) }));
+  const trip = (kids) => c.markdownToPoints(c.toMarkdown(Object.assign(c.mkRoot(), { children: kids, footnotes: [] }))).points;
+  const cases = [
+    ['code under a bullet keeps no list indent', [N('A', 'ul', [N('```js\nif (a) {\n  b();\n}\n```', 'code')])]],
+    ['a heading under a bullet stays under it', [N('A', 'ul', [N('## H', 'h2', [N('x', 'ul')])]), N('B', 'ul')]],
+    ['a note comes back as the note', [N('Point', 'ul', [N('kid', 'ul')], { note: 'line1\nline2' })]],
+    ['a multi-line item keeps its lines', [N('a\nb', 'ul', [], { note: 'n' }), N('c', 'ul')]],
+    ['a property line comes back as properties', [N('Task', 'ul', [], { props: [{ key: 'status', val: 'done' }, { key: 'owner', val: 'al' }] })]],
+  ];
+  for (const [name, kids] of cases) {
+    const want = JSON.stringify(full(kids));
+    assert.equal(JSON.stringify(full(trip(kids))), want, name);
+  }
+});
+
 test('#1265 Markdown import — wired into the Import door (format-sniffed, reuses appendOpmlSubtrees)', () => {
   assert.ok(_src.includes('markdownToPoints(text)'), 'the Import door parses non-OPML text as Markdown');
   const dlg = fnBody(_src, 'openImportDialog');
@@ -26905,7 +26967,8 @@ test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calc
   const so = fnBody(_src, 'mtSortOrder');
   assert.match(so, /const numericCol = !role && sortReading\(rows, col, role, lastDataRow\) === 'number'/,
     'Sort infers numeric ONLY when the user has set no role');
-  assert.match(so, /if \(numericCol\) return cellNum\(v\)/, 'and keys those cells with the shared rule');
+  // #1706: h:mm first (a table view's cells are property values, read as hours); the rest is the shared rule
+  assert.match(so, /if \(numericCol\) return parseDuration\(v\) \?\? cellNum\(v\)/, 'and keys those cells with the shared rule');
   // an explicit `number` role keeps Number(), because mtCellHtml FORMATS with Number():
   // sort order and displayed value must agree about the same column
   assert.match(so, /if \(role === 'number'\) \{ const n = Number\(v\)/);
@@ -32749,6 +32812,36 @@ test('#1666 census: every property-number reader takes a duration, the write-bac
   const calls = nonEmpty([...NC.matchAll(/parseNumFmt\(([^()]*)\)/g)].map(m => m[1]).filter(a => /\.sigfigs/.test(a)), 'parseNumFmt calls');
   assert.deepEqual(calls.filter(a => !/\.time$/.test(a)), [], 'no dialog drops the h:mm box');
   assert.equal(calls.length, 6, 'three dialogs, a preview and a save each');
+});
+
+// #1706: the two property readers #1666 missed. The table view sorts property values through
+// mtSortOrder, and search key:>N compares them; both read 1:30 as 1 (parseFloat) or NaN (Number).
+test('#1706 table view sort reads h:mm property values as hours', () => {
+  const order = rr => host(c.mtSortOrder(host(rr), 1, 'asc', null, host([]), rr.length - 1)).map(i => rr[i][1]);
+  assert.deepEqual(order([['Point', 'dur'], ['A', '1:30'], ['B', '0:45'], ['C', '1:15'], ['D', '1:00']]),
+    ['0:45', '1:00', '1:15', '1:30'], 'whole hours tied and kept document order');
+  assert.deepEqual(order([['Point', 'dur'], ['A', '0:45'], ['B', '0:30'], ['C', '0:45'], ['D', '1:00']]),
+    ['0:30', '0:45', '0:45', '1:00'], 'every value read as 0');
+  assert.deepEqual(order([['Point', 'n'], ['A', '10'], ['B', '1,000'], ['C', '2']]), ['2', '10', '1,000'], 'plain numbers unchanged');
+});
+test('#1706 search key:>N compares an h:mm property value as hours', () => {
+  const pt = val => { const n = c.mkNode('p'); n.props = [{ key: 'dur', val }]; return n; };
+  const hits = (q, val) => c.termMatchesNode(c.parseSearchQuery(q)[0], pt(val), [], {});
+  assert.equal(hits('dur:>1', '1:30'), true, '1:30 is past one hour');
+  assert.equal(hits('dur:>1', '0:45'), false);
+  assert.equal(hits('dur:<2', '1:15'), true);
+  assert.equal(hits('dur:>=1.5', '1:30'), true, 'decimal hours on the query side');
+  assert.equal(hits('quote:>300', '450') || hits('dur:>300', '450'), true, 'a plain number still compares');
+  assert.equal(hits('dur:>1', 'soon'), false, 'a word never matches');
+});
+test('#1706 census: the sort key and the search compare read h:mm too', () => {
+  assert.ok(fnBody(NC, 'mtSortOrder').includes('parseDuration(v) ?? cellNum(v)'), 'inferred numeric sort');
+  assert.ok(between(NC, "if (term.kind === 'propnum')", "if (term.kind === 'prop')").includes('parseDuration('), 'search propnum arm');
+  // the ratchet: any function that turns a property VALUE into a number with Number()/parseFloat
+  // reads h:mm in the same body, so the next reader that forgets it fails here, not in a panel
+  const sites = nonEmpty([...NC.matchAll(/(?:parseFloat|Number)\((?:String\()?\w+\.val\b/g)]
+    .map(m => [...NC.slice(0, m.index).matchAll(/\nfunction (\w+)/g)].pop()[1]), 'property-value number readers');
+  assert.deepEqual([...new Set(sites)].filter(fn => !fnBody(NC, fn).includes('parseDuration(')), [], 'every reader takes a duration');
 });
 
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {
@@ -41295,6 +41388,33 @@ test('table view: the menu door finds the list from its heading or from any row 
   assert.equal(c.tableViewListFor(top.children[0], top, states).list.id, 'top', 'a row at the top level reaches the document list');
   assert.equal(c.tableViewListFor({ text: 'prose', children: [] }, { children: [] }, states), null, 'prose offers nothing');
   assert.ok(fnBody(_src, 'showBulletPopup').includes('tableViewListFor(node, parentOf(nodeId)'), 'the bullet menu calls it');
+});
+
+// #1708: the list's table view shows outside its grid in two text forms. The strip caption read
+// displayText(list), whose own-prop pill froze to #ERR (pillScopeAt took its fallback for a foreign
+// node because displayText passes varMapAt(node), the very map pillVarsAt returns). And the exports
+// wrote a query base's empty node.text, a whitespace-only line, where the frozen table belongs.
+test('#1708 a table view as text: the caption resolves own props, the exports freeze the grid', () => {
+  const root = c.mkRoot();
+  const trip = c.mkNode('Trip [[math:m1]] left'); trip.math = [{ key: 'm1', expr: 'budget - sum(cost)', result: '' }];
+  trip.props.push({ key: 'budget', val: '400' });
+  const tv = c.mkNode(''); tv.type = 'base';
+  tv.qbase = { expr: '', cols: [{ name: 'Name', field: 'title' }, { name: 'cost', field: 'cost' }], scope: 'siblings' };
+  const train = c.mkNode('Train'); train.props.push({ key: 'cost', val: '120' });
+  const hotel = c.mkNode('Hotel'); hotel.props.push({ key: 'cost', val: '180' });
+  trip.children.push(tv, train, hotel); root.children.push(trip);
+  c._context.__r1708 = root;
+  vm.runInContext('root = __r1708; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    assert.equal(c.displayText(trip), 'Trip 100 left', 'the caption text reads the list\'s own props, as its pill does');
+    for (const [name, out] of [['md', c.toMarkdown(root)], ['txt', c.toPlainText(root)]]) {
+      const lines = out.split('\n');
+      assert.ok(!lines.some(l => l.length && !l.trim()), name + ': no whitespace-only line: ' + JSON.stringify(out));
+      assert.ok(lines.some(l => /Train/.test(l) && /120/.test(l) && /\|/.test(l)), name + ': the table view freezes to its rows: ' + JSON.stringify(out));
+    }
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
 });
 
 test('table view: the strip says where the rows come from, in words', () => {

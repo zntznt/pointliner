@@ -18,6 +18,15 @@
   ],
   "mutants": [
     {
+      "id": "base-export-frozen-grid",
+      "suite": "unit",
+      "why": "a query base exports its frozen grid; exporting node.text again writes the whitespace-only line the existence guard must catch",
+      "file": "index.html",
+      "find": "return node.qbase ? baseToStaticText(node) : node.text;",
+      "replace": "return node.text;",
+      "kills": "#1708 a table view as text"
+    },
+    {
       "id": "roll-count-scope-sniff",
       "suite": "unit",
       "why": "the folder-scope tip reads the roll head out of g.def; a counted {roll 2 folder: ...} must still be read as a folder roll",
@@ -4123,6 +4132,9 @@
     {"id": "noexport-link-hide-recursion", "suite": "unit", "why": "a kept title that itself links to an excluded point must carry the hide set one level down", "file": "index.html", "find": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner, hide) || id, docId || '', id);", "replace": "      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);", "kills": "#1698 a caption-less link to an excluded point"},
     {"id": "noexport-readonly-note-link", "suite": "unit", "why": "the read-only page's note sink must take the link step, or mdToHtml draws the excluded title", "file": "index.html", "find": "mdToHtml(linkText(node.note, 0, roLink, undefined, hide))", "replace": "mdToHtml(node.note)", "kills": "#1698 a caption-less link to an excluded point"},
     {"id": "static-table-paint-rounds", "suite": "unit", "why": "a static table paints a computed cell's full persisted precision instead of the display default", "file": "index.html", "find": "? escHtml(formatMathResult(+raw)) : cellMd(raw);", "replace": "? cellMd(raw) : cellMd(raw);", "kills": "#1694 a table formula persists full precision"},
-    {"id": "qbase-formula-col-fmt", "suite": "unit", "why": "a query-base formula column must display with its own format, or Decimal places and h:mm set on it do nothing", "file": "index.html", "find": "rollupFmt(n, src, fmt || null))", "replace": "rollupFmt(n, src, null))", "kills": "#1707 a query-base formula column honors its own format"}
+    {"id": "qbase-formula-col-fmt", "suite": "unit", "why": "a query-base formula column must display with its own format, or Decimal places and h:mm set on it do nothing", "file": "index.html", "find": "rollupFmt(n, src, fmt || null))", "replace": "rollupFmt(n, src, null))", "kills": "#1707 a query-base formula column honors its own format"},
+    {"id": "tableview-sort-hmm", "suite": "unit", "why": "the inferred numeric sort key must read h:mm as hours, or 1:30 ties 1:15 at 1", "file": "index.html", "find": "if (numericCol) return parseDuration(v) ?? cellNum(v);", "replace": "if (numericCol) return cellNum(v);", "kills": "#1706 census: the sort key"},
+    {"id": "search-propnum-hmm", "suite": "unit", "why": "search key:>N must read an h:mm value as hours, or Number('1:30') is NaN and the point is skipped", "file": "index.html", "find": "n = parseDuration(v) ?? Number(v);", "replace": "n = Number(v);", "kills": "#1706 search key:>N"},
+    {"id": "prop-number-reader-ratchet", "suite": "unit", "why": "the ratchet must catch a property-value Number() reader that drops parseDuration", "file": "index.html", "find": "(DATE_KEYS.has(k) ? null : parseDuration(p.val))", "replace": "(null)", "kills": "#1706 census: the sort key"}
   ]
 }

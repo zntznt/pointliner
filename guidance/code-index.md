@@ -1403,6 +1403,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `createBaseAt` — Create a base (interactive grid) from /base — NON-DESTRUCTIVELY. This fixes the
 - `promoteStaticTable` — "Convert to base" on a static table (§6 promote). Splits the point around the table
 - `baseToStaticText` — IA-1 (product-identity §3b, freedom of form): the inverse of "Convert table to base".
+- `baseExportText` — #1708: what a base exports as. An authored base's text IS its table; a query base's text is empty
 - `convertBaseToText`
 - `findFirstTableRange` — Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
 - `announceDebut` — Insert an inline artifact at the current caret (used by the "@" menu).
@@ -1836,7 +1837,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `simulateChance` — The share of a Monte-Carlo outcome array satisfying `value <op> t`, as a PERCENTAGE — the reducer
 - `SIM_MAX`
 - `SIM_WORK_MAX` — Work cap for one simulate(): trials x dice rolled per trial. rollParsed costs ~1 us a die, so
-- `simDiceCost` — Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+- `simDiceCost` — Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average (parseDice refuses an exploding d1).
 - `_simMemo` — simulate() results by call text + resolved terms: a pure function of its key, so no doc reset.
 - `hashSeedStr` — FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
 - `sampleGenerator` — Sample a generator N times → an outcome array (numbers for dice, strings otherwise). Uses the same

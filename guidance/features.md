@@ -1161,7 +1161,9 @@ Implemented:
   clone, shorthand promotion, the footnote lift, undo and the toast are shared:
   - **`.opml`** — a Pointliner document, in exactly as it left.
   - **Markdown (`.md`)** — `markdownToPoints`, designed as the inverse of the `toMarkdown` export
-    (round-trip is its acceptance test). Headings nest by level, lists by relative indent. Picking
+    (round-trip is its acceptance test). Headings nest by level, lists by relative indent; a heading or
+    code block inside a list item stays in it, and the lines written straight under a point come back as
+    its note and properties (a multi-line item exports with `\` hard breaks so the two never mix). Picking
     **several** `.md` files at once runs `markdownVaultToPoints`: each file becomes a section and
     `[[wikilinks]]` between them resolve to live links, `![[embeds]]` to mirrors. Serves Obsidian,
     Logseq, Bear, iA Writer and plain `.md` alike.
