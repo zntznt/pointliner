@@ -2204,7 +2204,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `connectWorkspace` — Connect (user gesture): pick a folder, write the doc into it once via the existing OPML
 - `connectAdoptExisting` — #839: the connect-by-opening path — the current doc is blank and the chosen folder
 - `reconnectWorkspace` — Reconnect (user gesture): a stored handle was rehydrated but lacks permission; re-request
-- `reopenWorkspaceDoc` — Reopen the workspace doc from disk, honoring newer-wins, and rebind for auto-write.
+- `otherDocumentLoses` — Reopen the workspace doc from disk, honoring newer-wins, and rebind for auto-write.
+- `reopenWorkspaceDoc`
 
 ## workspace link index (CF-1: scan the folder into the cross-doc index)
 
@@ -2348,6 +2349,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `chipAriaLabel`
 - `externalDropContent` — #1329: drag an image from a web page onto the outline → a new point that references it. A LOCAL image
 - `dragCarriesExternal`
+- `droppedDocFile` — The first dropped file Open would take (the same names its file input accepts), or null.
+- `openDroppedFile` — File > Open by drag: the picker-free path the "picker refused" message points at.
+- `handlePageFileDrop` — Anywhere on the page, not only the outline. A file drop nothing claimed used to fall through to
 - `handleExternalDrop`
 - `searchHashtag` — Apply a tag chip's filter — shared by the click handler and the Enter/Space
 - `_clockLongPressed` — Touch has no Shift, so step-back on a manual clock is a LONG-PRESS (tap still advances) —
