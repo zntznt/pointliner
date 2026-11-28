@@ -26966,7 +26966,8 @@ test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calc
   const so = fnBody(_src, 'mtSortOrder');
   assert.match(so, /const numericCol = !role && sortReading\(rows, col, role, lastDataRow\) === 'number'/,
     'Sort infers numeric ONLY when the user has set no role');
-  assert.match(so, /if \(numericCol\) return cellNum\(v\)/, 'and keys those cells with the shared rule');
+  // #1706: h:mm first (a table view's cells are property values, read as hours); the rest is the shared rule
+  assert.match(so, /if \(numericCol\) return parseDuration\(v\) \?\? cellNum\(v\)/, 'and keys those cells with the shared rule');
   // an explicit `number` role keeps Number(), because mtCellHtml FORMATS with Number():
   // sort order and displayed value must agree about the same column
   assert.match(so, /if \(role === 'number'\) \{ const n = Number\(v\)/);
@@ -32810,6 +32811,36 @@ test('#1666 census: every property-number reader takes a duration, the write-bac
   const calls = nonEmpty([...NC.matchAll(/parseNumFmt\(([^()]*)\)/g)].map(m => m[1]).filter(a => /\.sigfigs/.test(a)), 'parseNumFmt calls');
   assert.deepEqual(calls.filter(a => !/\.time$/.test(a)), [], 'no dialog drops the h:mm box');
   assert.equal(calls.length, 6, 'three dialogs, a preview and a save each');
+});
+
+// #1706: the two property readers #1666 missed. The table view sorts property values through
+// mtSortOrder, and search key:>N compares them; both read 1:30 as 1 (parseFloat) or NaN (Number).
+test('#1706 table view sort reads h:mm property values as hours', () => {
+  const order = rr => host(c.mtSortOrder(host(rr), 1, 'asc', null, host([]), rr.length - 1)).map(i => rr[i][1]);
+  assert.deepEqual(order([['Point', 'dur'], ['A', '1:30'], ['B', '0:45'], ['C', '1:15'], ['D', '1:00']]),
+    ['0:45', '1:00', '1:15', '1:30'], 'whole hours tied and kept document order');
+  assert.deepEqual(order([['Point', 'dur'], ['A', '0:45'], ['B', '0:30'], ['C', '0:45'], ['D', '1:00']]),
+    ['0:30', '0:45', '0:45', '1:00'], 'every value read as 0');
+  assert.deepEqual(order([['Point', 'n'], ['A', '10'], ['B', '1,000'], ['C', '2']]), ['2', '10', '1,000'], 'plain numbers unchanged');
+});
+test('#1706 search key:>N compares an h:mm property value as hours', () => {
+  const pt = val => { const n = c.mkNode('p'); n.props = [{ key: 'dur', val }]; return n; };
+  const hits = (q, val) => c.termMatchesNode(c.parseSearchQuery(q)[0], pt(val), [], {});
+  assert.equal(hits('dur:>1', '1:30'), true, '1:30 is past one hour');
+  assert.equal(hits('dur:>1', '0:45'), false);
+  assert.equal(hits('dur:<2', '1:15'), true);
+  assert.equal(hits('dur:>=1.5', '1:30'), true, 'decimal hours on the query side');
+  assert.equal(hits('quote:>300', '450') || hits('dur:>300', '450'), true, 'a plain number still compares');
+  assert.equal(hits('dur:>1', 'soon'), false, 'a word never matches');
+});
+test('#1706 census: the sort key and the search compare read h:mm too', () => {
+  assert.ok(fnBody(NC, 'mtSortOrder').includes('parseDuration(v) ?? cellNum(v)'), 'inferred numeric sort');
+  assert.ok(between(NC, "if (term.kind === 'propnum')", "if (term.kind === 'prop')").includes('parseDuration('), 'search propnum arm');
+  // the ratchet: any function that turns a property VALUE into a number with Number()/parseFloat
+  // reads h:mm in the same body, so the next reader that forgets it fails here, not in a panel
+  const sites = nonEmpty([...NC.matchAll(/(?:parseFloat|Number)\((?:String\()?\w+\.val\b/g)]
+    .map(m => [...NC.slice(0, m.index).matchAll(/\nfunction (\w+)/g)].pop()[1]), 'property-value number readers');
+  assert.deepEqual([...new Set(sites)].filter(fn => !fnBody(NC, fn).includes('parseDuration(')), [], 'every reader takes a duration');
 });
 
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {

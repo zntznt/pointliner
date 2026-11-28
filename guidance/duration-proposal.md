@@ -104,11 +104,14 @@ property parser already splits on the first colon, so `t: 1:15` was always store
 - **ISO `PT1H15M` as a property value.** No panel user writes it and no CSV in the repo carries it.
   It is a small addition to `parseDuration` if an import ever brings it.
 - **12-hour clock (`7:30pm`).** A time of day, not a duration.
-- **Search compares (`t:>1:00`).** `key:>N` is its own search grammar with its own UXP-20 decision;
-  extending it is a separate change.
+- **An h:mm query (`t:>1:00`).** Since #1706 the VALUE side of `key:>N` reads h:mm, so `t:>1`
+  finds a point whose `t` is `1:30`. The number in the query is still decimal hours: `key:>N` is
+  its own search grammar with its own UXP-20 decision, and extending it is a separate change.
 - **Markdown/base table cells.** A table cell is cell text read by `cellNum` (Calculate and Sort),
   a different family from property values. Its `parseFloat` reads `1:15` as `1`, silently. Filed as
-  #1672 rather than widened into this one.
+  #1672 rather than widened into this one. The table view of a list is the exception that bit
+  (#1706): its cells ARE property values, so the inferred numeric sort key reads h:mm first, while
+  Calculate's write-back stays with #1672.
 - **The stat adjuster (`resolveStatTarget`)** writes the number back into the property. Writing
   `2.25` over a typed `2:15` would destroy the author's text, so a duration is deliberately not a
   stat. This is the measured negative case of the census.
