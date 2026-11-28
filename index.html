@@ -39786,15 +39786,15 @@ function rowsToCsv(rows) {
   return (rows || []).map(r => (r || []).map(csvCell).join(',')).join('\r\n');   // CRLF: the convention Excel expects
 }
 // A point's child rows → [headerRow, ...dataRows], or null when there is no table to export (fewer than
-// two rows, or no properties). Columns are the UNION of every property key seen across the rows (so a row
+// two rows, or no properties). Columns are the UNION of every data property key (dataPropKeys) across the rows (so a row
 // missing one gets an empty cell), preceded by a `name` column holding each point's title cleaned of
 // pills, props and markdown markers. Row order is document order; column order is first-seen.
 function sectionToCsvRows(node, states) {
   const kids = ((node && node.children) || []).filter(c => c && typeof c.text === 'string');
   if (kids.length < 2) return null;
   const keys = [], seen = new Set();
-  for (const c of kids) for (const p of (c.props || [])) {
-    const k = (p.key || '').trim(); const lk = k.toLowerCase();
+  for (const c of kids) for (const key of dataPropKeys(c)) {   // #1671: skip app bookkeeping (created/edited/check), as the row shape does
+    const k = key.trim(); const lk = k.toLowerCase();
     if (k && !seen.has(lk)) { seen.add(lk); keys.push(k); }
   }
   if (!keys.length) return null;
