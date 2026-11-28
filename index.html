@@ -10001,6 +10001,8 @@ function mathReasonPhrase(why, expr) {
 function cellNum(raw) {
   const s = (raw == null ? '' : String(raw)).trim();
   if (s === '') return null;
+  const d = parseDuration(s);   // #1672: 1:15 is 1.25 hours, as a property value reads; parseFloat stopped at the colon
+  if (d !== null) return d;
   const n = parseFloat(importCellValue(s));
   return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading
 }
@@ -10121,6 +10123,23 @@ function computeTable(model, tblfm, vars = {}) {
     return evalMath(e, vars);
   }
 
+  // #1672: a lone vsum/vmean/vmin/vmax/vmedian over a range of h:mm literals is written back h:mm,
+  // as rollupFmt shows a property total over the same values (a count, or arithmetic on it, is not).
+  const DUR_AGG = new RegExp('^\\s*(?:vsum|vmean|vmax|vmin|vmedian)\\s*\\(\\s*(' + TBLFM_REF + ')\\.\\.(' + TBLFM_REF + ')\\s*\\)\\s*$');
+  function durationAgg(expr, ctx) {
+    const m = DUR_AGG.exec(expr);
+    const a = m && parseOrgRef(m[1], ctx, dims), b = m && parseOrgRef(m[2], ctx, dims);
+    if (!a || !b) return false;
+    let seen = 0;
+    for (let r = Math.min(a.row, b.row); r <= Math.max(a.row, b.row); r++)
+      for (let c = Math.min(a.col, b.col); c <= Math.max(a.col, b.col); c++) {
+        const v = String((rows[r] || [])[c] ?? '').trim();
+        if (v === '') continue;
+        if (fmap.has(r + ',' + c) || parseDuration(v) === null) return false;
+        seen++;
+      }
+    return seen > 0;
+  }
   const out = rows.map(r => r.slice());
   for (const key of fmap.keys()) {
     const [r, c] = key.split(',').map(Number);
@@ -10134,7 +10153,8 @@ function computeTable(model, tblfm, vars = {}) {
       } else if (v === ERR_UP) {
         disp = '#ERR (another cell)';
       } else {
-        disp = formatCellValue(v);   // #1694: persisted, so never the 8 s.f. display cut
+        disp = durationAgg(fmap.get(key), { row: r, col: c }) ? formatDuration(v)   // #1672
+          : formatCellValue(v);   // #1694: persisted, so never the 8 s.f. display cut
       }
     } catch (e) {
       if (e && e.message === 'CYCLE') disp = '#ERR (loops on itself)';

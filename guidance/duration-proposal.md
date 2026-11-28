@@ -107,11 +107,11 @@ property parser already splits on the first colon, so `t: 1:15` was always store
 - **An h:mm query (`t:>1:00`).** Since #1706 the VALUE side of `key:>N` reads h:mm, so `t:>1`
   finds a point whose `t` is `1:30`. The number in the query is still decimal hours: `key:>N` is
   its own search grammar with its own UXP-20 decision, and extending it is a separate change.
-- **Markdown/base table cells.** A table cell is cell text read by `cellNum` (Calculate and Sort),
-  a different family from property values. Its `parseFloat` reads `1:15` as `1`, silently. Filed as
-  #1672 rather than widened into this one. The table view of a list is the exception that bit
-  (#1706): its cells ARE property values, so the inferred numeric sort key reads h:mm first, while
-  Calculate's write-back stays with #1672.
+- **Markdown/base table cells.** Shipped in #1672: `cellNum` (Calculate and Sort) reads `1:15` as
+  1.25 hours before its `parseFloat`, which had read it as `1`. A base cell's text is stored, so
+  the write-back was its own call: a lone `vsum`/`vmean`/`vmin`/`vmax`/`vmedian` over a range whose
+  every literal is h:mm is written `2:05`, as the rollup pill over the same values shows it, and it
+  reads back as the same number. A count, arithmetic on a total, or a mixed range stays decimal.
 - **The stat adjuster (`resolveStatTarget`)** writes the number back into the property. Writing
   `2.25` over a typed `2:15` would destroy the author's text, so a duration is deliberately not a
   stat. This is the measured negative case of the census.

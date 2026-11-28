@@ -26954,6 +26954,19 @@ test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calc
   assert.equal(sum('| item | cost |\n| --- | --- |\n| a | $5 |\n| b | $40 |\n| total | |', '@4$2=vsum(@2..@3)', 3), '45');
   assert.deepEqual(col([['H', 'C'], ['a', '1,000'], ['b', '50'], ['c', '200']], 1, 'asc'), ['50', '200', '1,000']);
   assert.deepEqual(col([['H', 'C'], ['a', '$5'], ['b', '$100'], ['c', '$40']], 1, 'asc'), ['$5', '$40', '$100']);
+  // #1672: an h:mm cell reads as decimal hours, as a property value does, not 1:15 as 1 (parseFloat
+  // stops at the colon). A total over an all-duration range is written back h:mm, as the rollup pill
+  // over the same values shows it; a mixed range, or a count, stays a plain number.
+  assert.deepEqual([c.cellNum('1:15'), c.cellNum('0:50'), c.cellNum('-0:30'), c.cellNum('1:00:36')], [1.25, 50 / 60, -0.5, 1.01]);
+  assert.equal(c.cellNum('1:15'), c.propScalar('1:15'), 'one value, one number, cell or property');
+  const durs = '| item | dur |\n| --- | --- |\n| a | 1:15 |\n| b | 0:50 |\n| total | |';
+  assert.equal(sum(durs, '@>$2=vsum(@2$2..@-1$2)', 3), '2:05', 'the shape Calculate writes');
+  assert.equal(sum(durs, '@4$2=vmean(@2..@3)', 3), '1:02:30');
+  assert.equal(sum(durs, '@4$2=vcount(@2..@3)', 3), '2', 'a count is a tally, not a duration');
+  assert.equal(sum(durs, '@4$2=vsum(@2..@3)*2', 3), '4.16666666666667', 'arithmetic over a total is a plain number');
+  assert.equal(sum('| item | dur |\n| --- | --- |\n| a | 1:15 |\n| b | 2 |\n| total | |', '@4$2=vsum(@2..@3)', 3), '3.25', 'mixed: a number');
+  assert.equal(c.cellNum('2:05'), c.cellNum('1:15') + c.cellNum('0:50'), 'the written total reads back as the sum');
+  assert.deepEqual(col([['H', 'C'], ['a', '1:15'], ['b', '0:50'], ['c', '10:05']], 1, 'asc'), ['0:50', '1:15', '10:05']);
   // colIsNumeric: every non-empty cell must read, and an all-blank column is NOT numeric
   assert.equal(c.colIsNumeric(host(rows), 1, 4), true);
   assert.equal(c.colIsNumeric(host(mixed), 1, 3), false);
