@@ -2388,7 +2388,8 @@ test('#1705 confirming a dialog hands focus back where dismissing does', { skip:
     await pg.keyboard.type(val, { delay: 15 }); await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
     assert.equal(await onPoint(pg), true, `/${cmd}: Enter must hand the caret back to the point, not to <body>`);
     await pg.keyboard.type('X'); await pg.waitForTimeout(200);
-    assert.match(await pg.evaluate(() => root.children[0].text), /X/, `/${cmd}: and what is typed next lands in the point`);
+    // #1723: at the END of the point. A bare /X/ passed with the caret at offset 0 ("XTask").
+    assert.match(await pg.evaluate(() => editableText(document.activeElement)), /^Task.*X$/, `/${cmd}: and what is typed next lands at the end of the point`);
     await pg.close();
   }
   // Properties, from the point menu: Save
@@ -2408,6 +2409,17 @@ test('#1705 confirming a dialog hands focus back where dismissing does', { skip:
     await clickBtn(pg, 'Save'); await pg.waitForTimeout(500);
     assert.deepEqual(await pg.evaluate(() => root.children[0].props), [{ key: 'status', val: 'open' }], 'precondition, Save saved');
     assert.equal(await onPoint(pg), true, 'Properties: Save must hand the caret back to the point');
+    await pg.keyboard.type('X'); await pg.waitForTimeout(200);
+    assert.equal(await pg.evaluate(() => editableText(document.activeElement)), 'TaskX', '#1723 Properties: at the end of the point');
+    await pg.close(); }
+  // #1723: the DISMISS door shares closeIo, so Escape lands the caret at the end too
+  { const pg = await fresh();
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Task /due', { delay: 20 }); await pg.waitForTimeout(450);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(500);
+    await pg.keyboard.type('X'); await pg.waitForTimeout(200);
+    assert.match(await pg.evaluate(() => editableText(document.activeElement)), /^Task.*X$/, '#1723 /due Escape: at the end of the point');
     await pg.close(); }
   // Edit query base, from the table view strip: Save
   { const pg = await fresh();

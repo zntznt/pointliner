@@ -20403,11 +20403,12 @@ function restoreChromeReturn() {
     el.focus();
     // offset is in unfolded (edit-mode) coordinates; clamp in case exitEdit's
     // refold/promote changed the text length. null → end of text.
-    const max = editableText(el).length;
-    try { setCaretByOffset(el, Math.min(offset ?? max, max)); } catch (_) {}
+    try { setCaretByOffset(el, caretRestoreOffset(offset, editableText(el).length)); } catch (_) {}
   });
   return true;
 }
+// Where a returning caret lands: the saved offset clamped to the text, or its end when none was saved.
+function caretRestoreOffset(offset, max) { return Math.min(offset ?? max, max); }
 
 // Re-roll a pill while its point is in EDIT mode (#450): capture the caret, run the reroll,
 // refresh the var maps the pills read, repaint the edit HTML, and restore the caret. The five
@@ -26626,11 +26627,19 @@ function closeIo() {
   _welcomeOpen = false;   // #1192: whatever closed it, the Welcome chooser is no longer on the card
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (!ret) return;
-  try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  try { focusReturnTarget(liveReturnTarget(ret, returnTwin)); } catch (_) {}
   // #1705: a commit that renders AFTER closing detaches the target again; follow it one frame on.
   requestAnimationFrame(() => {
-    if (document.activeElement === document.body) try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+    if (document.activeElement === document.body) try { focusReturnTarget(liveReturnTarget(ret, returnTwin)); } catch (_) {}
   });
+}
+// #1723: a point's focus handler enters edit and rebuilds its HTML, so a plain focus() left the caret
+// at offset 0 and the next keystroke was prepended. A point focus MOVED here gets the caret at its end.
+function focusReturnTarget(el) {
+  const had = document.activeElement === el;
+  el.focus();
+  if (had || !el.classList.contains('node-content') || !el.dataset.editing || nodeById(el.dataset.id)?.type === 'base') return;
+  try { setCaretByOffset(el, caretRestoreOffset(null, editableText(el).length)); } catch (_) {}
 }
 // #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
 // commit re-rendered (render() for a point, refreshTable() for a base widget) and replaced it with a

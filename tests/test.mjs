@@ -32443,11 +32443,20 @@ test('#1705 a dialog that commits hands focus to the re-rendered twin of its ret
     'the query strip head is a stable target, so Save on Edit query base can find it again');
 
   const ci = fnBody(_src, 'closeIo');
-  assert.equal((ci.match(/liveReturnTarget\(ret, returnTwin\)\.focus\(\)/g) || []).length, 2,
+  assert.equal((ci.match(/focusReturnTarget\(liveReturnTarget\(ret, returnTwin\)\)/g) || []).length, 2,
     'closeIo focuses the live twin now AND again one frame on');
   assert.match(ci, /requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === document\.body\)/,
     'the second pass only fills an empty focus, never moves a real one');
   const tw = fnBody(_src, 'returnTwin');
+  // #1723: a plain focus() re-entered edit with the caret at 0, so the next keystroke was prepended.
+  assert.equal(c.caretRestoreOffset(null, 4), 4, 'no saved offset: the end of the text');
+  assert.equal(c.caretRestoreOffset(2, 4), 2, 'a saved offset is kept');
+  assert.equal(c.caretRestoreOffset(9, 4), 4, 'and clamped to the text');
+  assert.equal(c.caretRestoreOffset(0, 4), 0, 'offset 0 is a real offset, not "none"');
+  const fr = fnBody(_src, 'focusReturnTarget');
+  assert.match(fr, /setCaretByOffset\(el, caretRestoreOffset\(null, editableText\(el\)\.length\)\)/, 'a returned point gets its caret at the end');
+  assert.match(fr, /const had = document\.activeElement === el;[\s\S]*if \(had \|\|/, 'but a caret that never left is not moved');
+  assert.match(fnBody(_src, 'restoreChromeReturn'), /caretRestoreOffset\(offset, editableText\(el\)\.length\)/, 'the chrome door shares the rule');
   assert.match(tw, /\.node-content\[data-id=/, 'a point is found again by its id');
   assert.match(tw, /baseRefocusSelector\(baseFocusDescriptor\(el\)\)/, 'a base control by the #1383 key');
 
