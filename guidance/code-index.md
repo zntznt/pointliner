@@ -1187,6 +1187,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `chromeReturn`
 - `armChromeReturn`
 - `restoreChromeReturn`
+- `caretRestoreOffset` — Where a returning caret lands: the saved offset clamped to the text, or its end when none was saved.
 - `rerollInEdit` — Re-roll a pill while its point is in EDIT mode (#450): capture the caret, run the reroll,
 - `PILL_CLASS_TYPE` — #1116: which artifact type a rendered pill element is, so a DOM element can name the token it
 - `pillTokenFor`
@@ -1459,6 +1460,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openDialogShell`
 - `openInsertDialog`
 - `closeIo`
+- `focusReturnTarget` — #1723: a point's focus handler enters edit and rebuilds its HTML, so a plain focus() left the caret
 - `liveReturnTarget` — #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
 - `returnTwin` — The DOM half: a point by its data-id, a base control by the stable key refreshTable already uses.
 - `closeBuilderWindow` — Close the builder window after a nested dialog submits. Clears builder state,
