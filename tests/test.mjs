@@ -24015,6 +24015,22 @@ test('#1310 sectionToCsvRows: rows become a grid (union of property columns, val
   assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
 });
 
+test('#1671 sectionToCsvRows: app bookkeeping (created, edited, check) is not a column', () => {
+  const head = c.mkNode('## Crops');
+  const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: String(v) }); return n; };
+  head.children.push(
+    mk('Kale', [['created', '2026-11-26T19:19'], ['beds', 4], ['yield', 30], ['edited', '2026-11-26T19:20']]),
+    mk('Chard', [['Created', '2026-11-26T19:21'], ['beds', 2], ['yield', 12], ['check', 'beds > 1']]),
+  );
+  const rows = host(c.sectionToCsvRows(head, {}));
+  assert.deepEqual(rows, [['name', 'beds', 'yield'], ['Kale', '4', '30'], ['Chard', '2', '12']], 'only the columns the user typed');
+  // the same filter the + Add / Table view shape uses, so the export door cannot drift from them again
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('dataPropKeys(c)'), 'CSV columns come from dataPropKeys');
+  const only = c.mkNode('## Log');
+  only.children.push(mk('a', [['created', 'x']]), mk('b', [['edited', 'y']]));
+  assert.equal(c.sectionToCsvRows(only, {}), null, 'rows carrying only bookkeeping are not a table to export');
+});
+
 test('#1699 CSV export: values match the chip (reserved date keys stay raw) and formula cells are defused', () => {
   const head = c.mkNode('## Log');
   const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: v }); return n; };
