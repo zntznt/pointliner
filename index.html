@@ -20423,11 +20423,12 @@ function restoreChromeReturn() {
     el.focus();
     // offset is in unfolded (edit-mode) coordinates; clamp in case exitEdit's
     // refold/promote changed the text length. null → end of text.
-    const max = editableText(el).length;
-    try { setCaretByOffset(el, Math.min(offset ?? max, max)); } catch (_) {}
+    try { setCaretByOffset(el, caretRestoreOffset(offset, editableText(el).length)); } catch (_) {}
   });
   return true;
 }
+// Where a returning caret lands: the saved offset clamped to the text, or its end when none was saved.
+function caretRestoreOffset(offset, max) { return Math.min(offset ?? max, max); }
 
 // Re-roll a pill while its point is in EDIT mode (#450): capture the caret, run the reroll,
 // refresh the var maps the pills read, repaint the edit HTML, and restore the caret. The five
@@ -26646,11 +26647,19 @@ function closeIo() {
   _welcomeOpen = false;   // #1192: whatever closed it, the Welcome chooser is no longer on the card
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (!ret) return;
-  try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+  try { focusReturnTarget(liveReturnTarget(ret, returnTwin)); } catch (_) {}
   // #1705: a commit that renders AFTER closing detaches the target again; follow it one frame on.
   requestAnimationFrame(() => {
-    if (document.activeElement === document.body) try { liveReturnTarget(ret, returnTwin).focus(); } catch (_) {}
+    if (document.activeElement === document.body) try { focusReturnTarget(liveReturnTarget(ret, returnTwin)); } catch (_) {}
   });
+}
+// #1723: a point's focus handler enters edit and rebuilds its HTML, so a plain focus() left the caret
+// at offset 0 and the next keystroke was prepended. A point focus MOVED here gets the caret at its end.
+function focusReturnTarget(el) {
+  const had = document.activeElement === el;
+  el.focus();
+  if (had || !el.classList.contains('node-content') || !el.dataset.editing || nodeById(el.dataset.id)?.type === 'base') return;
+  try { setCaretByOffset(el, caretRestoreOffset(null, editableText(el).length)); } catch (_) {}
 }
 // #1705: the element a dialog captured on open is stale by the time a COMMIT closes it, because the
 // commit re-rendered (render() for a point, refreshTable() for a base widget) and replaced it with a
@@ -39797,15 +39806,15 @@ function rowsToCsv(rows) {
   return (rows || []).map(r => (r || []).map(csvCell).join(',')).join('\r\n');   // CRLF: the convention Excel expects
 }
 // A point's child rows → [headerRow, ...dataRows], or null when there is no table to export (fewer than
-// two rows, or no properties). Columns are the UNION of every property key seen across the rows (so a row
+// two rows, or no properties). Columns are the UNION of every data property key (dataPropKeys) across the rows (so a row
 // missing one gets an empty cell), preceded by a `name` column holding each point's title cleaned of
 // pills, props and markdown markers. Row order is document order; column order is first-seen.
 function sectionToCsvRows(node, states) {
   const kids = ((node && node.children) || []).filter(c => c && typeof c.text === 'string');
   if (kids.length < 2) return null;
   const keys = [], seen = new Set();
-  for (const c of kids) for (const p of (c.props || [])) {
-    const k = (p.key || '').trim(); const lk = k.toLowerCase();
+  for (const c of kids) for (const key of dataPropKeys(c)) {   // #1671: skip app bookkeeping (created/edited/check), as the row shape does
+    const k = key.trim(); const lk = k.toLowerCase();
     if (k && !seen.has(lk)) { seen.add(lk); keys.push(k); }
   }
   if (!keys.length) return null;

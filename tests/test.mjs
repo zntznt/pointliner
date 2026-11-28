@@ -24015,6 +24015,22 @@ test('#1310 sectionToCsvRows: rows become a grid (union of property columns, val
   assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
 });
 
+test('#1671 sectionToCsvRows: app bookkeeping (created, edited, check) is not a column', () => {
+  const head = c.mkNode('## Crops');
+  const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: String(v) }); return n; };
+  head.children.push(
+    mk('Kale', [['created', '2026-11-26T19:19'], ['beds', 4], ['yield', 30], ['edited', '2026-11-26T19:20']]),
+    mk('Chard', [['Created', '2026-11-26T19:21'], ['beds', 2], ['yield', 12], ['check', 'beds > 1']]),
+  );
+  const rows = host(c.sectionToCsvRows(head, {}));
+  assert.deepEqual(rows, [['name', 'beds', 'yield'], ['Kale', '4', '30'], ['Chard', '2', '12']], 'only the columns the user typed');
+  // the same filter the + Add / Table view shape uses, so the export door cannot drift from them again
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('dataPropKeys(c)'), 'CSV columns come from dataPropKeys');
+  const only = c.mkNode('## Log');
+  only.children.push(mk('a', [['created', 'x']]), mk('b', [['edited', 'y']]));
+  assert.equal(c.sectionToCsvRows(only, {}), null, 'rows carrying only bookkeeping are not a table to export');
+});
+
 test('#1699 CSV export: values match the chip (reserved date keys stay raw) and formula cells are defused', () => {
   const head = c.mkNode('## Log');
   const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: v }); return n; };
@@ -32440,11 +32456,20 @@ test('#1705 a dialog that commits hands focus to the re-rendered twin of its ret
     'the query strip head is a stable target, so Save on Edit query base can find it again');
 
   const ci = fnBody(_src, 'closeIo');
-  assert.equal((ci.match(/liveReturnTarget\(ret, returnTwin\)\.focus\(\)/g) || []).length, 2,
+  assert.equal((ci.match(/focusReturnTarget\(liveReturnTarget\(ret, returnTwin\)\)/g) || []).length, 2,
     'closeIo focuses the live twin now AND again one frame on');
   assert.match(ci, /requestAnimationFrame\(\(\) => \{\s*if \(document\.activeElement === document\.body\)/,
     'the second pass only fills an empty focus, never moves a real one');
   const tw = fnBody(_src, 'returnTwin');
+  // #1723: a plain focus() re-entered edit with the caret at 0, so the next keystroke was prepended.
+  assert.equal(c.caretRestoreOffset(null, 4), 4, 'no saved offset: the end of the text');
+  assert.equal(c.caretRestoreOffset(2, 4), 2, 'a saved offset is kept');
+  assert.equal(c.caretRestoreOffset(9, 4), 4, 'and clamped to the text');
+  assert.equal(c.caretRestoreOffset(0, 4), 0, 'offset 0 is a real offset, not "none"');
+  const fr = fnBody(_src, 'focusReturnTarget');
+  assert.match(fr, /setCaretByOffset\(el, caretRestoreOffset\(null, editableText\(el\)\.length\)\)/, 'a returned point gets its caret at the end');
+  assert.match(fr, /const had = document\.activeElement === el;[\s\S]*if \(had \|\|/, 'but a caret that never left is not moved');
+  assert.match(fnBody(_src, 'restoreChromeReturn'), /caretRestoreOffset\(offset, editableText\(el\)\.length\)/, 'the chrome door shares the rule');
   assert.match(tw, /\.node-content\[data-id=/, 'a point is found again by its id');
   assert.match(tw, /baseRefocusSelector\(baseFocusDescriptor\(el\)\)/, 'a base control by the #1383 key');
 

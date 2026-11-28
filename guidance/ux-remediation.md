@@ -6819,7 +6819,12 @@ before the `focus()`. Both have mutants, killed.
 
 ## UXP-340 -- a dialog hands the point back with the caret at its start, not where it was
 
-**Status: open.** P1 / P4. Left by #1705.
+**Status: shipped (caret half, #1723).** P1 / P4. Left by #1705.
+
+#1723: `closeIo` now hands a point back through `focusReturnTarget`, which puts the caret at the end of the
+point whenever focus moved there (`caretRestoreOffset`, the rule `restoreChromeReturn` already used: no
+saved offset means the end). Confirm and Escape share that close, so both doors are fixed, driven in the
+#1705 browser check. The File menu rows below remain open.
 
 #1705 made confirm return focus where dismiss already did: Schedule, Check, Properties and the query
 editor now land on the point (or the strip) they were opened from, and File, New and the four
