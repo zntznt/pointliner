@@ -838,6 +838,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## base view system (BV-1)
 
 - `mtViewSwitcherHtml` — node.view = { kind: 'board', groupBy: colIdx } (absent = table view, today's
+- `viewNeedHint` — #1707: what a dimmed Board/Calendar button needs, naming a door this base HAS. A query base's
 - `wireViewButtons` — Wire the view-switcher buttons (mousedown + preventDefault per the caret invariant, Enter/Space
 - `mtRefreshViewSwitcher` — #939: repaint the view-switcher strip IN PLACE so Board/Calendar enable/disable follows the
 - `statusColWarning` — #1114: WHICH half is missing, for the Board refusal. One message used to cover three different
@@ -884,6 +885,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `showBaseRowsMenu` — The rows-cap menu (the chrome button's pointer path). Reuses the shared
 - `showBaseSettingsMenu` — The unified whole-base settings menu (bases round 3): view + outline rows cap in
 - `mtColumnLabel` — Pure: the user-facing label for a base column — the header cell's text with
+- `showQColPanel` — #1707: a query base's Column menu. Its header click is the sort door, so this opens on right-click,
 - `showBaseColumnsMenu` — The bullet-menu door to per-column ops (#811): list the base's columns; picking
 - `mtCollapsedHost` — Move one card (data row) to another lane: write the keyword into the groupBy
 - `bvMoveCard`
@@ -1875,6 +1877,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `qbaseColsToggle` — Tick appends a bare `key` line (its name defaults to the key); untick drops every line projecting
 - `listColumnKeys` — The keys a list-scoped base offers as checkboxes: the row shape's columns in its order, then any
 - `openQBaseDialog`
+- `qbaseCarryFmt` — #1707: the columns textarea has no format syntax, so a Save re-parses columns without one. Carry
 - `editQBase`
 - `VARBASE_PREVIEW_CAP` — Variable base: turn a base's rows into document variables (bases-direction §7b). The
 - `varBasePreviewHtml`

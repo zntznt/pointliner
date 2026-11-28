@@ -26411,7 +26411,8 @@ test('#1114 the wiring: the gate consults the reason, and the tooltip names its 
     'the board gate must ask WHICH half is missing, and hand over the declared sequences to say so');
   assert.match(sv, /\/\^\(status\|state\)\$\/i/, 'and find the named column to ask about');
   // the dimmed button is what a user reads FIRST, and often the only thing they read
-  assert.match(fnBody(_src, 'mtViewSwitcherHtml'), /Mark a column as Status to use Board \(Column menu, Show as\)/,
+  // #1707: the copy moved into viewNeedHint so a query base can name ITS door; the authored text is unchanged
+  assert.match(fnBody(_src, 'viewNeedHint'), /Mark a column as Status to use Board \(Column menu, Show as\)/,
     'the tooltip names its own door');
   assert.doesNotMatch(_src, /'Mark a column as Status to use Board'/, 'the doorless tooltip is gone');
 
@@ -41728,4 +41729,58 @@ test('untrusted file: a 5000-deep brace line is not walked quadratically', () =>
   } finally { ctx.matchBrace = real; }
   assert.match(fnBody(_src, 'mdInline'), /if \(\/\\\{\[\^\{\}\]\*\\\{\/\.test\(s\) && !braceDepthExceeds\(s\)\) \{/);
   assert.match(fnBody(_src, 'promoteInlineShorthand'), /if \(text\.indexOf\('\{'\) < 0 \|\| braceDepthExceeds\(text\)\) return false;/);
+});
+
+// #1707: a query base's formula column takes the pill's number format, and its Board/Calendar hints
+// name the door a query base actually has (it has no Show as menu).
+test('#1707 a query-base formula column honors its own format, set through the column door', () => {
+  const kid = (t, h) => { const n = c.mkNode(t); n.props = [{ key: 'hours', val: h }]; return n; };
+  const st = c.mkNode('Station 4');
+  st.children.push(c.mkNode(''), kid('A', '38:30'), kid('B', '41:20'));
+  const host0 = st.children[0];
+  const root = { children: [st] };
+  const cols = [{ name: 'Short', field: '= 36 - hours' }];
+  const cell = cs => host(c.queryTableRows('', cs, root, host0.id, 100, 'siblings')).rows.map(r => r.cells[0]);
+  assert.deepEqual(cell(cols), ['-2.5', '-5.3333333'], 'no format: the bare result, as before');
+  const node = { qbase: { expr: '', cols, scope: 'siblings' } };
+  assert.equal(c.mtWriteColFmt(node, 0, { decimals: 1 }), true, 'the Number format door writes a query column');
+  assert.equal(node.colFmt, undefined, 'into the column, not the authored colFmt array (it rides _qbase)');
+  assert.deepEqual(cell(node.qbase.cols), ['-2.5', '-5.3'], 'Decimal places rounds the column');
+  c.mtWriteColFmt(node, 0, { time: true });
+  assert.deepEqual(cell(node.qbase.cols), ['-2:30', '-5:20'], 'and h:mm reads it as hours and minutes');
+  assert.equal(c.mtWriteColFmt(node, 0, null), true);
+  assert.equal('fmt' in node.qbase.cols[0], false, 'clearing drops the key, so an untouched base serializes clean');
+  assert.equal(c.mtWriteColFmt(node, 0, null), false, 'nothing to clear: no repaint');
+});
+
+test('#1707 Edit query keeps a column format across Save', () => {
+  const old = [{ name: 'T', field: 'title' }, { name: 'Short', field: '= 36 - hours', fmt: { decimals: 1 } }];
+  const next = c.qbaseCarryFmt(old, [{ name: 'Gap', field: '=  36 - hours' }, { name: 'T', field: 'title' }, { name: 'X', field: '= 1' }]);
+  assert.deepEqual(host(next), [{ name: 'Gap', field: '=  36 - hours', fmt: { decimals: 1 } }, { name: 'T', field: 'title' }, { name: 'X', field: '= 1' }],
+    'matched by field (renamed or moved keeps it), a new column has none');
+  assert.match(fnBody(_src, 'editQBase'), /const next = \{ expr, cols: qbaseCarryFmt\(node\.qbase\.cols, cols\),/, 'the Save door carries the formats');
+});
+
+test('#1707 Board/Calendar hints name a door the base has', () => {
+  assert.equal(c.viewNeedHint('board', null), 'Mark a column as Status to use Board (Column menu, Show as)');
+  assert.equal(c.viewNeedHint('calendar', null), 'Mark a column as Date to use Calendar (Column menu, Show as)');
+  const list = c.viewNeedHint('calendar', { scope: 'siblings' }), search = c.viewNeedHint('calendar', { expr: 'x' });
+  for (const s of [list, search, c.viewNeedHint('board', { scope: 'siblings' })])
+    assert.doesNotMatch(s, /Show as\)|Column menu/, `a query base has no Show as menu: ${s}`);
+  assert.match(list, /Edit query, Show as columns/);
+  assert.match(search, /Edit query, Columns/);
+  assert.match(fnBody(_src, 'mtViewSwitcherHtml'), /const need = viewNeedHint\(k, node\.qbase\);/, 'the tooltip uses it');
+  const sv = fnBody(_src, 'mtSetView');
+  assert.match(sv, /if \(gi < 0 && node\.qbase\) \{ flashHint\(viewNeedHint\('board', node\.qbase\)\); return; \}/, 'the Board flash too');
+  assert.match(sv, /flashHint\(node\.qbase \? viewNeedHint\('calendar', node\.qbase\)/, 'and the Calendar flash');
+});
+
+test('#1707 a query base has a Column menu: header right-click/Shift+F10 and the bullet menu', () => {
+  const w = fnBody(_src, 'mtWireQBaseSort');
+  assert.match(w, /addEventListener\('contextmenu', e => \{ e\.preventDefault\(\); e\.stopPropagation\(\); showQColPanel\(node, c, b\); \}\)/);
+  assert.match(w, /if \(e\.key === 'ContextMenu' \|\| \(e\.key === 'F10' && e\.shiftKey\)\) \{ e\.preventDefault\(\); e\.stopPropagation\(\); showQColPanel\(node, c, b\); return; \}/);
+  assert.match(fnBody(_src, 'showBaseColumnsMenu'), /node\.qbase \? showQColPanel\(node, c, th \|\| anchorEl\) : showColPanel\(node, c, th \|\| anchorEl\)/);
+  const p = fnBody(_src, 'showQColPanel');
+  assert.match(p, /if \(cd\.field\.trim\(\)\[0\] === '='\)\s*addItem\('Number format…'/, 'a formula column offers the format');
+  assert.match(p, /addItem\('Edit columns…'/, 'every column offers the columns editor');
 });
